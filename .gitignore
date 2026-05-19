@@ -5,6 +5,7 @@
 [Dd]ebug/
 [Rr]elease/
 [Pp]ublish/
+releases/
 *.user
 *.suo
 *.rsuser
@@ -26,4 +27,3 @@
 .DS_Store
 Thumbs.db
 .vscode/
-
