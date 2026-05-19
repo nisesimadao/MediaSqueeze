@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <AssemblyTitle>MediaSqueeze</AssemblyTitle>
+    <AssemblyDescription>メディアファイル変換・圧縮ツール</AssemblyDescription>
+    <AssemblyCompany>Nisesimadao</AssemblyCompany>
+    <AssemblyProduct>MediaSqueeze</AssemblyProduct>
+    <AssemblyCopyright>Copyright © 2025</AssemblyCopyright>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FFMpegCore" Version="5.1.0" />
+    <PackageReference Include="FFMpegCore.Extensions.System.Drawing.Common" Version="5.1.0" />
+    <PackageReference Include="System.Windows.Forms" Version="6.0.0" />
+    <PackageReference Include="YoutubeExplode"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

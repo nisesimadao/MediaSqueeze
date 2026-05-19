@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Xabe.FFmpeg" Version="6.0.1" />
+    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Ver2.0\**" />
+    <EmbeddedResource Remove="Ver2.0\**" />
+    <None Remove="Ver2.0\**" />
+    <Page Remove="Ver2.0\**" />
+  </ItemGroup>
+
+</Project>

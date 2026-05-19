@@ -1,0 +1,29 @@
+## Visual Studio / .NET
+.vs/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Pp]ublish/
+*.user
+*.suo
+*.rsuser
+*.sln.docstates
+
+## Build artifacts
+*.dll
+*.exe
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+*.cache
+*.log
+*.tmp
+*.nupkg
+*.snupkg
+
+## OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
