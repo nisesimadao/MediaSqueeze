@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Xabe.FFmpeg;
@@ -13,12 +14,21 @@ public enum SqueezeMode
     Resize
 }
 
+public enum ScaleMode
+{
+    Original,
+    Percent,
+    Width,
+    Height
+}
+
 public sealed record SqueezeRequest(
     string InputPath,
     SqueezeMode Mode,
     string Quality,
     string OutputExtension,
-    string Resolution);
+    ScaleMode ScaleMode,
+    int ScaleValue);
 
 public sealed class ProgressUpdate
 {
@@ -104,10 +114,12 @@ public static class MediaProcessor
 
     private static string BuildParameter(SqueezeRequest request)
     {
+        string scaleFilter = BuildScaleFilter(request);
+
         return request.Mode switch
         {
-            SqueezeMode.Compress => QualityToOptions(request.Quality),
-            SqueezeMode.Resize => $"-vf scale={NormalizeResolution(request.Resolution)}",
+            SqueezeMode.Compress => JoinParameters(QualityToOptions(request.Quality), scaleFilter),
+            SqueezeMode.Resize => scaleFilter,
             _ => string.Empty
         };
     }
@@ -124,20 +136,33 @@ public static class MediaProcessor
         };
     }
 
-    private static string NormalizeResolution(string resolution)
+    private static string BuildScaleFilter(SqueezeRequest request)
     {
-        string trimmed = resolution.Trim().ToLowerInvariant();
-        string[] parts = trimmed.Split('x', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (parts.Length == 2 &&
-            int.TryParse(parts[0], out int width) &&
-            int.TryParse(parts[1], out int height) &&
-            width > 0 &&
-            height > 0)
+        if (request.ScaleMode == ScaleMode.Original)
         {
-            return $"{width}:{height}";
+            return string.Empty;
         }
 
-        return "1280:720";
+        int value = Math.Max(1, request.ScaleValue);
+        string scale = request.ScaleMode switch
+        {
+            ScaleMode.Percent => BuildPercentScale(value),
+            ScaleMode.Width => $"{value}:-2",
+            ScaleMode.Height => $"-2:{value}",
+            _ => string.Empty
+        };
+
+        return string.IsNullOrWhiteSpace(scale) ? string.Empty : $"-vf \"scale={scale}\"";
+    }
+
+    private static string JoinParameters(params string[] parameters)
+    {
+        return string.Join(' ', parameters.Where(parameter => !string.IsNullOrWhiteSpace(parameter)));
+    }
+
+    private static string BuildPercentScale(int percent)
+    {
+        string factor = (percent / 100.0).ToString("0.###", CultureInfo.InvariantCulture);
+        return $"trunc(iw*{factor}/2)*2:trunc(ih*{factor}/2)*2";
     }
 }
