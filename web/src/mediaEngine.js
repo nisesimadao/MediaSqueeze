@@ -44,12 +44,16 @@ export class MediaEngine {
     this.loadPromise = null
     this.onProgress = null
     this.onLog = null
+    this.logCapture = null
   }
 
   createFFmpeg() {
     const ffmpeg = new FFmpeg()
     ffmpeg.on('progress', ({ progress }) => this.onProgress?.(clamp(progress, 0, 1)))
-    ffmpeg.on('log', ({ message }) => this.onLog?.(message))
+    ffmpeg.on('log', ({ message }) => {
+      this.logCapture?.push(message)
+      this.onLog?.(message)
+    })
     return ffmpeg
   }
 
@@ -84,18 +88,39 @@ export class MediaEngine {
     onStatus?.('Reading media information...')
     await this.ffmpeg.writeFile(inputName, await fetchFile(file))
 
-    const code = await this.ffmpeg.ffprobe([
-      '-v', 'error',
-      '-show_entries', 'format=duration,bit_rate:stream=codec_type,codec_name,width,height,duration',
-      '-of', 'json',
-      inputName,
-      '-o', probeName,
-    ])
-    if (code !== 0) throw new Error('ffprobe could not analyze this file.')
+    this.logCapture = []
+    let code = -1
+    let probe
 
-    const data = await this.ffmpeg.readFile(probeName)
-    const probe = JSON.parse(textDecoder.decode(data))
-    await this.tryDelete(probeName)
+    try {
+      code = await this.ffmpeg.ffprobe([
+        '-v', 'error',
+        '-show_error',
+        '-show_entries', 'format=duration,bit_rate:stream=codec_type,codec_name,width,height,duration',
+        '-of', 'json',
+        inputName,
+        '-o', probeName,
+      ])
+
+      const data = await this.ffmpeg.readFile(probeName)
+      const raw = textDecoder.decode(data).trim()
+      if (!raw) throw new Error('ffprobe returned an empty result.')
+
+      probe = JSON.parse(raw)
+      if (probe.error) {
+        throw new Error(probe.error.string || `ffprobe failed with code ${probe.error.code ?? code}.`)
+      }
+      if (!probe.format && !(probe.streams?.length)) {
+        throw new Error(`ffprobe returned no media information (exit ${code}).`)
+      }
+    } catch (error) {
+      const detail = (this.logCapture || []).filter(Boolean).slice(-12).join('\n')
+      const message = error?.message || `ffprobe failed with exit code ${code}.`
+      throw new Error(detail ? `${message}\n\nffprobe:\n${detail}` : message)
+    } finally {
+      this.logCapture = null
+      await this.tryDelete(probeName)
+    }
 
     const streams = probe.streams || []
     const videoStream = streams.find((stream) => stream.codec_type === 'video')
