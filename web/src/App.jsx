@@ -114,7 +114,7 @@ export default function App() {
         if (mode === 'resize') changeMode('compress')
         setOutputFormat('mp3')
         setScaleMode('original')
-      } else if (!outputs.some((item) => item.value === outputFormat)) {
+      } else {
         setOutputFormat('mp4')
       }
       setStatus(`Selected:\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}`)
