@@ -2,7 +2,6 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL } from '@ffmpeg/util'
 
 const CORE_VERSION = '0.12.10'
-const CORE_MT_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@${CORE_VERSION}/dist/esm`
 const CORE_ST_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/esm`
 
 const textDecoder = new TextDecoder()
@@ -64,16 +63,13 @@ export class MediaEngine {
     this.loadPromise = (async () => {
       onStatus?.('Preparing FFmpeg...')
       this.ffmpeg = this.createFFmpeg()
-      const threaded = globalThis.crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined'
-      const baseURL = threaded ? CORE_MT_URL : CORE_ST_URL
       const config = {
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        coreURL: await toBlobURL(`${CORE_ST_URL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${CORE_ST_URL}/ffmpeg-core.wasm`, 'application/wasm'),
       }
-      if (threaded) config.workerURL = await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript')
       await this.ffmpeg.load(config)
       this.loaded = true
-      onStatus?.(threaded ? 'FFmpeg ready (multi-threaded).' : 'FFmpeg ready.')
+      onStatus?.('FFmpeg ready (single-threaded).')
     })().finally(() => {
       this.loadPromise = null
     })
