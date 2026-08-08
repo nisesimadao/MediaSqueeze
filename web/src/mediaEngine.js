@@ -85,10 +85,9 @@ export class MediaEngine {
     await this.ffmpeg.writeFile(inputName, await fetchFile(file))
 
     const code = await this.ffmpeg.ffprobe([
-      '-v', 'quiet',
-      '-print_format', 'json',
-      '-show_format',
-      '-show_streams',
+      '-v', 'error',
+      '-show_entries', 'format=duration,bit_rate:stream=codec_type,codec_name,width,height,duration',
+      '-of', 'json',
       inputName,
       '-o', probeName,
     ])
