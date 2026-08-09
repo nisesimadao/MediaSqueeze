@@ -33,6 +33,14 @@ const compatibilityLabelKeys = {
   unsupported: 'compat.unsupported',
 }
 
+const compatibilityEnglishToLevel = {
+  Recommended: 'recommended',
+  Compatible: 'compatible',
+  'Drops streams': 'stream-drop',
+  Special: 'special',
+  Unsupported: 'unsupported',
+}
+
 export function localizeCompatibility(compatibility) {
   if (!compatibility || getLocale() !== 'ja') return compatibility
   return {
@@ -61,8 +69,11 @@ export function localizeRuntimeMessage(message) {
   match = source.match(/^Compressing image\.\.\. pass (\d+)$/)
   if (match) return t('status.compressingImagePass', { pass: match[1] })
 
-  match = source.match(/^Converting to (.+)\.\.\.$/)
-  if (match) return t('status.converting', { format: match[1] })
+  match = source.match(/^Converting to (.+?)(?:\.\.\.)?(?: \((.+)\))?$/)
+  if (match) {
+    const warning = match[2] ? `（${localizeRuntimeMessage(match[2])}）` : ''
+    return `${t('status.converting', { format: match[1] })}${warning}`
+  }
 
   match = source.match(/^Checking (.+) compatibility\.\.\.$/)
   if (match) return t('status.checkCompatibility', { muxer: match[1] })
@@ -75,6 +86,12 @@ export function localizeRuntimeMessage(message) {
 
   match = source.match(/^Unclosed (double|single) quote in custom arguments\.$/)
   if (match) return t('error.unclosedQuote', { quote: t(match[1] === 'double' ? 'quote.double' : 'quote.single') })
+
+  match = source.match(/^(Recommended|Compatible|Drops streams|Special|Unsupported): ([\s\S]+)$/)
+  if (match) {
+    const level = compatibilityEnglishToLevel[match[1]]
+    return `${t(compatibilityLabelKeys[level])}: ${localizeRuntimeMessage(match[2])}`
+  }
 
   match = source.match(/^This format requires (video\/image|audio|compatible media) input\.$/)
   if (match) {
@@ -116,6 +133,18 @@ export function localizeRuntimeMessage(message) {
     })
     return t('compat.preset', { parts: localizedParts.join('、') })
   }
+
+  match = source.match(/^ffprobe returned an empty result\.$/)
+  if (match) return 'ffprobeから解析結果が返されませんでした。'
+
+  match = source.match(/^ffprobe failed with code (-?\d+)\.$/)
+  if (match) return `ffprobeが終了コード ${match[1]} で失敗しました。`
+
+  match = source.match(/^ffprobe returned no media information \(exit (-?\d+)\)\.$/)
+  if (match) return `ffprobeからメディア情報を取得できませんでした（終了コード ${match[1]}）。`
+
+  match = source.match(/^ffprobe failed with exit code (-?\d+)\.$/)
+  if (match) return `ffprobeが終了コード ${match[1]} で失敗しました。`
 
   return source
 }
