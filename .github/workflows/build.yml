@@ -6,6 +6,7 @@ on:
       - main
       - support-all-media-formats
       - smart-format-compatibility
+      - custom-ffmpeg-arguments
   pull_request:
 
 permissions:
@@ -66,6 +67,8 @@ jobs:
           if (formats.length < 30) throw new Error(`Unexpectedly small FFmpeg catalog: ${formats.length}`)
           console.log(`Validated ${formats.length} output formats across ${groups.length} categories.`)
           NODE
+      - name: Test custom argument parser
+        run: node src/customArguments.test.mjs
       - name: Test smart compatibility
         run: node src/formatCompatibility.test.mjs
       - name: Validate real muxer defaults
