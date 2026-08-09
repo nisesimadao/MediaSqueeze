@@ -10,11 +10,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 
 if ('serviceWorker' in navigator) {
+  const warmOfflineRuntime = (worker) => {
+    worker?.postMessage({ type: 'WARM_FFMPEG_CORE' })
+  }
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    warmOfflineRuntime(navigator.serviceWorker.controller)
+  })
+
   ;(async () => {
     try {
       await navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' })
       const registration = await navigator.serviceWorker.ready
-      registration.active?.postMessage({ type: 'WARM_FFMPEG_CORE' })
+      warmOfflineRuntime(registration.active)
     } catch (error) {
       console.warn('Offline cache registration failed:', error)
     }
