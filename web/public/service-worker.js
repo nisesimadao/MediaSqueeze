@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'mediasqueeze-offline-'
-const CACHE_NAME = `${CACHE_PREFIX}v1`
+const CACHE_NAME = `${CACHE_PREFIX}v2`
 
 const FFMPEG_CORE_URLS = [
   'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js',
@@ -23,9 +23,8 @@ async function fetchAndCache(cache, url) {
   return response
 }
 
-async function precacheApplication() {
+async function precacheApplicationShell() {
   const cache = await caches.open(CACHE_NAME)
-
   const pageResponse = await fetchAndCache(cache, '/')
   const html = await pageResponse.clone().text()
   const discovered = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
@@ -33,13 +32,26 @@ async function precacheApplication() {
     .filter((url) => url.startsWith('/'))
 
   const localUrls = [...new Set([...LOCAL_SEED_URLS, ...discovered])]
+    .filter((url) => url !== '/')
   await Promise.all(localUrls.map((url) => fetchAndCache(cache, url)))
-  await Promise.all(FFMPEG_CORE_URLS.map((url) => fetchAndCache(cache, url)))
+}
+
+async function warmFfmpegCore() {
+  const cache = await caches.open(CACHE_NAME)
+  await Promise.all(FFMPEG_CORE_URLS.map(async (url) => {
+    const cached = await cache.match(url)
+    if (cached) return
+    try {
+      await fetchAndCache(cache, url)
+    } catch (error) {
+      console.warn('FFmpeg offline cache warm-up failed:', url, error)
+    }
+  }))
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    precacheApplication().then(() => self.skipWaiting()),
+    precacheApplicationShell().then(() => self.skipWaiting()),
   )
 })
 
@@ -53,6 +65,12 @@ self.addEventListener('activate', (event) => {
     )
     await self.clients.claim()
   })())
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'WARM_FFMPEG_CORE') {
+    event.waitUntil(warmFfmpegCore())
+  }
 })
 
 async function networkFirstNavigation(request) {
