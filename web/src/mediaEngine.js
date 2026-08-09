@@ -1,5 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL } from '@ffmpeg/util'
+import { zipSync } from 'fflate'
+import { buildConvertArguments, buildOutputFormatGroups, FALLBACK_FORMAT_GROUPS } from './formatCatalog'
 
 const CORE_VERSION = '0.12.10'
 const CORE_ST_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/esm`
@@ -9,33 +11,6 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 const safeBase = (name) => (name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}._-]+/gu, '_') || 'media').slice(0, 80)
 const extOf = (name) => name.includes('.') ? name.split('.').pop().toLowerCase() : 'bin'
 
-export const OUTPUTS = {
-  video: [
-    { value: 'mp4', label: 'MP4' },
-    { value: 'mov', label: 'MOV' },
-    { value: 'mkv', label: 'MKV' },
-    { value: 'webm', label: 'WebM' },
-    { value: 'mp3', label: 'MP3' },
-    { value: 'm4a', label: 'M4A' },
-    { value: 'wav', label: 'WAV' },
-    { value: 'ogg', label: 'OGG' },
-    { value: 'flac', label: 'FLAC' },
-    { value: 'gif', label: 'GIF' },
-  ],
-  audio: [
-    { value: 'mp3', label: 'MP3' },
-    { value: 'm4a', label: 'M4A' },
-    { value: 'wav', label: 'WAV' },
-    { value: 'ogg', label: 'OGG' },
-    { value: 'flac', label: 'FLAC' },
-  ],
-  image: [
-    { value: 'jpg', label: 'JPG' },
-    { value: 'png', label: 'PNG' },
-    { value: 'webp', label: 'WebP' },
-  ],
-}
-
 export class MediaEngine {
   constructor() {
     this.ffmpeg = null
@@ -44,6 +19,7 @@ export class MediaEngine {
     this.onProgress = null
     this.onLog = null
     this.logCapture = null
+    this.formatGroupsCache = null
   }
 
   createFFmpeg() {
@@ -75,6 +51,36 @@ export class MediaEngine {
     })
 
     return this.loadPromise
+  }
+
+  async listOutputFormats(onStatus) {
+    if (this.formatGroupsCache) return this.formatGroupsCache
+    await this.load(onStatus)
+    onStatus?.('Reading supported output formats...')
+
+    try {
+      const muxers = await this.captureCommand(['-hide_banner', '-muxers'])
+      const encoders = await this.captureCommand(['-hide_banner', '-encoders'])
+      const devices = await this.captureCommand(['-hide_banner', '-devices'])
+      this.formatGroupsCache = buildOutputFormatGroups(muxers, encoders, devices)
+    } catch {
+      this.formatGroupsCache = FALLBACK_FORMAT_GROUPS
+    }
+
+    return this.formatGroupsCache
+  }
+
+  async captureCommand(args) {
+    const previousCapture = this.logCapture
+    const capture = []
+    this.logCapture = capture
+    try {
+      const code = await this.ffmpeg.exec(args)
+      if (code !== 0) return ''
+      return capture.join('\n')
+    } finally {
+      this.logCapture = previousCapture
+    }
   }
 
   async inspect(file, onStatus) {
@@ -136,6 +142,7 @@ export class MediaEngine {
       height: Number(videoStream?.height || 0),
       videoCodec: videoStream?.codec_name || null,
       audioCodec: audioStream?.codec_name || null,
+      hasVideo: Boolean(videoStream),
       hasAudio: Boolean(audioStream),
       bitrateKbps: Math.round(Number(probe.format?.bit_rate || 0) / 1000) || null,
     }
@@ -143,7 +150,9 @@ export class MediaEngine {
 
   async compressQuality({ file, inspection, quality = 'medium', scale, onStatus }) {
     await this.load(onStatus)
-    if (inspection.kind === 'image') throw new Error('Compress mode supports video and audio files.')
+    if (inspection.kind === 'image') {
+      return this.compressImageQuality({ file, inspection, quality, scale, onStatus })
+    }
 
     const preset = {
       high: { video: 2000, audio: 192 },
@@ -173,10 +182,28 @@ export class MediaEngine {
     return this.readResult(outputName, format)
   }
 
+  async compressImageQuality({ file, inspection, quality, scale, onStatus }) {
+    const outputName = `${safeBase(file.name)}_compressed.webp`
+    const qualityValue = { high: 90, medium: 76, low: 56 }[quality] || 76
+    await this.tryDelete(outputName)
+
+    const args = ['-i', inspection.inputName]
+    const filter = scaleFilter(scale)
+    if (filter) args.push('-vf', filter)
+    args.push('-frames:v', '1', '-an', '-c:v', 'libwebp', '-quality', String(qualityValue), outputName)
+
+    onStatus?.(`Compressing image... ${quality[0].toUpperCase()}${quality.slice(1)} quality`)
+    await this.execWithFallback(args, outputName)
+    return this.readResult(outputName, 'webp')
+  }
+
   async compress({ file, inspection, targetMB, scale, onStatus }) {
     await this.load(onStatus)
-    if (!inspection.duration || inspection.kind === 'image') {
-      throw new Error('Target-size compression supports video and audio files with a readable duration.')
+    if (inspection.kind === 'image') {
+      return this.compressImageToTarget({ file, inspection, targetMB, scale, onStatus })
+    }
+    if (!inspection.duration) {
+      throw new Error('Target-size compression requires readable media duration.')
     }
 
     const sourceMB = file.size / 1024 / 1024
@@ -255,38 +282,84 @@ export class MediaEngine {
     }
   }
 
-  async convert({ file, inspection, outputFormat, onStatus }) {
-    await this.load(onStatus)
-    const outputName = `${safeBase(file.name)}_converted.${outputFormat}`
-    await this.tryDelete(outputName)
-    const args = ['-i', inspection.inputName]
-
-    if (['mp3', 'm4a', 'wav', 'ogg', 'flac'].includes(outputFormat)) {
-      args.push('-vn')
-      if (outputFormat === 'mp3') args.push('-c:a', 'libmp3lame', '-b:a', '192k')
-      if (outputFormat === 'm4a') args.push('-c:a', 'aac', '-b:a', '192k')
-      if (outputFormat === 'wav') args.push('-c:a', 'pcm_s16le')
-      if (outputFormat === 'ogg') args.push('-c:a', 'libvorbis', '-q:a', '5')
-      if (outputFormat === 'flac') args.push('-c:a', 'flac')
-    } else if (['jpg', 'png', 'webp'].includes(outputFormat)) {
-      args.push('-frames:v', '1')
-      if (outputFormat === 'jpg') args.push('-q:v', '2')
-      if (outputFormat === 'webp') args.push('-quality', '88')
-    } else if (outputFormat === 'gif') {
-      args.push('-an', '-vf', 'fps=12')
-    } else if (outputFormat === 'webm') {
-      args.push('-c:v', 'libvpx-vp9', '-crf', '31', '-b:v', '0')
-      if (inspection.hasAudio) args.push('-c:a', 'libopus', '-b:a', '128k')
-    } else {
-      args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24', '-pix_fmt', 'yuv420p')
-      if (inspection.hasAudio) args.push('-c:a', 'aac', '-b:a', '160k')
-      if (outputFormat === 'mp4' || outputFormat === 'mov') args.push('-movflags', '+faststart')
+  async compressImageToTarget({ file, inspection, targetMB, scale, onStatus }) {
+    const sourceMB = file.size / 1024 / 1024
+    if (sourceMB <= targetMB) {
+      return {
+        blob: file,
+        filename: file.name,
+        size: file.size,
+        format: extOf(file.name),
+        passthrough: true,
+        targetMB,
+        withinTarget: true,
+      }
     }
 
-    args.push(outputName)
-    onStatus?.(`Converting to ${outputFormat.toUpperCase()}...`)
-    await this.execWithFallback(args, outputName)
-    return this.readResult(outputName, outputFormat)
+    const targetBytes = Math.floor(targetMB * 1024 * 1024)
+    const outputName = `${safeBase(file.name)}_${formatTarget(targetMB)}.webp`
+    let quality = 84
+    let extraScale = 1
+    let data = null
+
+    for (let pass = 0; pass < 7; pass += 1) {
+      await this.tryDelete(outputName)
+      const filters = []
+      const requestedScale = scaleFilter(scale)
+      if (requestedScale) filters.push(requestedScale)
+      if (extraScale < 0.999) {
+        filters.push(`scale=trunc(iw*${extraScale.toFixed(4)}/2)*2:trunc(ih*${extraScale.toFixed(4)}/2)*2`)
+      }
+
+      const args = ['-i', inspection.inputName]
+      if (filters.length) args.push('-vf', filters.join(','))
+      args.push('-frames:v', '1', '-an', '-c:v', 'libwebp', '-quality', String(quality), outputName)
+      onStatus?.(`Compressing image... pass ${pass + 1}`)
+      await this.execWithFallback(args, outputName)
+      data = await this.ffmpeg.readFile(outputName)
+      if (data.byteLength <= targetBytes) break
+
+      const ratio = targetBytes / data.byteLength
+      if (quality > 34) {
+        quality = Math.max(26, Math.round(quality * clamp(ratio, 0.58, 0.86)))
+      } else {
+        extraScale *= clamp(Math.sqrt(ratio) * 0.96, 0.35, 0.88)
+      }
+    }
+
+    const copy = new Uint8Array(data || new Uint8Array())
+    const blob = new Blob([copy], { type: 'image/webp' })
+    await this.tryDelete(outputName)
+    return {
+      blob,
+      filename: outputName,
+      size: copy.byteLength,
+      format: 'webp',
+      targetMB,
+      withinTarget: copy.byteLength <= targetBytes,
+    }
+  }
+
+  async convert({ file, inspection, outputSpec, onStatus }) {
+    await this.load(onStatus)
+    if (!outputSpec) throw new Error('Choose an output format.')
+
+    const outputDir = `convert_${Date.now()}`
+    const baseName = `${safeBase(file.name)}_converted.${outputSpec.extension}`
+    const outputPath = `${outputDir}/${baseName}`
+    await this.ffmpeg.createDir(outputDir)
+
+    try {
+      const args = ['-i', inspection.inputName, ...buildConvertArguments(outputSpec, inspection)]
+      if (outputSpec.muxer) args.push('-f', outputSpec.muxer)
+      args.push(outputPath)
+      onStatus?.(`Converting to ${outputSpec.label}...`)
+      await this.execWithFallback(args, outputPath)
+      return await this.readOutputSet(outputDir, baseName, outputSpec.extension)
+    } catch (error) {
+      await this.cleanupDirectory(outputDir)
+      throw error
+    }
   }
 
   async resize({ file, inspection, scale, onStatus }) {
@@ -336,10 +409,13 @@ export class MediaEngine {
         cleaned.push(fallback[index])
       }
       code = await this.ffmpeg.exec(cleaned)
+    } else if (args.includes('libwebp')) {
+      await this.tryDelete(outputName)
+      code = await this.ffmpeg.exec(args.map((arg) => arg === 'libwebp' ? 'webp' : arg))
     }
 
     if (code !== 0) {
-      throw new Error('FFmpeg processing failed. This codec or format may not be supported in the browser build.')
+      throw new Error('FFmpeg processing failed. This codec, muxer, or format may need additional options in this build.')
     }
   }
 
@@ -349,6 +425,70 @@ export class MediaEngine {
     const blob = new Blob([copy], { type: mimeFor(format) })
     await this.tryDelete(outputName)
     return { blob, filename: outputName, size: copy.byteLength, format }
+  }
+
+  async readOutputSet(directory, mainName, format) {
+    const files = await this.collectFiles(directory)
+    if (!files.length) throw new Error('FFmpeg finished without creating an output file.')
+
+    if (files.length === 1) {
+      const only = files[0]
+      const copy = new Uint8Array(only.data)
+      const blob = new Blob([copy], { type: mimeFor(format) })
+      await this.cleanupDirectory(directory)
+      return { blob, filename: mainName, size: copy.byteLength, format }
+    }
+
+    const archive = {}
+    let totalSize = 0
+    for (const file of files) {
+      archive[file.relativePath] = new Uint8Array(file.data)
+      totalSize += file.data.byteLength
+    }
+    const zipped = zipSync(archive, { level: 0 })
+    await this.cleanupDirectory(directory)
+    return {
+      blob: new Blob([zipped], { type: 'application/zip' }),
+      filename: `${mainName.replace(/\.[^.]+$/, '')}_bundle.zip`,
+      size: zipped.byteLength,
+      format: 'zip',
+      bundledFiles: files.length,
+      uncompressedSize: totalSize,
+    }
+  }
+
+  async collectFiles(directory, relative = '') {
+    const path = relative ? `${directory}/${relative}` : directory
+    const entries = await this.ffmpeg.listDir(path)
+    const files = []
+    for (const entry of entries) {
+      if (!entry?.name || entry.name === '.' || entry.name === '..') continue
+      const childRelative = relative ? `${relative}/${entry.name}` : entry.name
+      const childPath = `${directory}/${childRelative}`
+      if (entry.isDir || entry.isFolder) files.push(...await this.collectFiles(directory, childRelative))
+      else files.push({ relativePath: childRelative, data: await this.ffmpeg.readFile(childPath) })
+    }
+    return files
+  }
+
+  async cleanupDirectory(directory) {
+    if (!this.ffmpeg || !directory) return
+    try {
+      await this.deleteDirectoryRecursive(directory)
+    } catch {
+      // Best-effort cleanup after conversion failures.
+    }
+  }
+
+  async deleteDirectoryRecursive(path) {
+    const entries = await this.ffmpeg.listDir(path)
+    for (const entry of entries) {
+      if (!entry?.name || entry.name === '.' || entry.name === '..') continue
+      const child = `${path}/${entry.name}`
+      if (entry.isDir || entry.isFolder) await this.deleteDirectoryRecursive(child)
+      else await this.tryDelete(child)
+    }
+    await this.ffmpeg.deleteDir(path)
   }
 
   async cleanupInput(inspection) {
@@ -400,19 +540,12 @@ function normalizeImageExtension(extension) {
 
 function mimeFor(format) {
   return {
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    mov: 'video/quicktime',
-    mkv: 'video/x-matroska',
-    mp3: 'audio/mpeg',
-    m4a: 'audio/mp4',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    flac: 'audio/flac',
-    gif: 'image/gif',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+    mpg: 'video/mpeg', mpeg: 'video/mpeg', ts: 'video/mp2t', flv: 'video/x-flv', '3gp': 'video/3gpp', '3g2': 'video/3gpp2',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/ogg',
+    flac: 'audio/flac', aiff: 'audio/aiff', ac3: 'audio/ac3', eac3: 'audio/eac3',
+    gif: 'image/gif', apng: 'image/apng', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    avif: 'image/avif', bmp: 'image/bmp', tiff: 'image/tiff', tif: 'image/tiff', zip: 'application/zip',
+    m3u8: 'application/vnd.apple.mpegurl', mpd: 'application/dash+xml',
   }[format] || 'application/octet-stream'
 }
