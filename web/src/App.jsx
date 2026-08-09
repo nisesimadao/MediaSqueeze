@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MediaEngine } from './mediaEngine'
 import { FALLBACK_FORMAT_GROUPS, flattenFormats, preferredFormatId } from './formatCatalog'
+import { defaultCustomExtension, normalizeCustomExtension, runCustomFfmpeg } from './customArguments'
 
 const qualityOptions = [
   { value: 'high', label: 'High' },
@@ -35,6 +36,8 @@ export default function App() {
   const [outputFormat, setOutputFormat] = useState('mp4')
   const [scaleMode, setScaleMode] = useState('original')
   const [scaleValue, setScaleValue] = useState('50')
+  const [customArgs, setCustomArgs] = useState('')
+  const [customExtension, setCustomExtension] = useState('mp4')
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(0)
   const [status, setStatus] = useState('Select a file, or drop one here.')
@@ -53,12 +56,13 @@ export default function App() {
   const outputSpec = outputOptions.find((option) => option.id === outputFormat) || outputOptions[0] || null
   const formatCompatibility = outputSpec?.compatibility || null
   const convertBlocked = mode === 'convert' && formatCompatibility?.canRun === false
-  const scaleDisabled = mode === 'convert' || inspection?.kind === 'audio'
+  const scaleDisabled = mode === 'convert' || mode === 'custom' || inspection?.kind === 'audio'
   const scaleValueDisabled = scaleDisabled || scaleMode === 'original'
-  const optionLabel = mode === 'compress' ? 'Quality' : mode === 'convert' ? 'Format' : 'Output'
+  const optionLabel = mode === 'compress' ? 'Quality' : mode === 'convert' ? 'Format' : mode === 'custom' ? 'Extension' : 'Output'
 
   function scaleHint() {
     if (mode === 'convert') return 'Not used for Convert.'
+    if (mode === 'custom') return 'Controlled by custom FFmpeg arguments.'
     if (inspection?.kind === 'audio') return 'Not available for audio.'
     if (scaleMode === 'percent') return 'Example: 50 means half size.'
     if (scaleMode === 'width') return 'Height is calculated automatically.'
@@ -72,6 +76,9 @@ export default function App() {
     if (nextMode === 'resize' && scaleMode === 'original') {
       setScaleMode('percent')
       setScaleValue('50')
+    }
+    if (nextMode === 'custom' && inspection) {
+      setCustomExtension(defaultCustomExtension(inspection.kind))
     }
   }
 
@@ -114,6 +121,7 @@ export default function App() {
       const groups = await engine.listOutputFormats((message) => setStatus(`${message}\n${nextFile.name}`))
       setFormatGroups(groups)
       setInspection(info)
+      setCustomExtension(defaultCustomExtension(info.kind))
 
       if (info.kind === 'audio') {
         if (mode === 'resize') changeMode('compress')
@@ -137,7 +145,7 @@ export default function App() {
   }
 
   function validateScale() {
-    if (mode === 'convert' || inspection?.kind === 'audio' || scaleMode === 'original') return true
+    if (mode === 'convert' || mode === 'custom' || inspection?.kind === 'audio' || scaleMode === 'original') return true
     const value = Number(scaleValue)
     if (!Number.isInteger(value) || value <= 0) {
       setError('Enter a positive whole number for Size.')
@@ -175,6 +183,15 @@ export default function App() {
       setError('Enter a valid target size in MB.')
       return
     }
+    if (mode === 'custom') {
+      try {
+        normalizeCustomExtension(customExtension)
+      } catch (err) {
+        setError(err.message)
+        setStatus(`Error: ${err.message}`)
+        return
+      }
+    }
 
     const scale = {
       mode: scaleMode,
@@ -195,6 +212,15 @@ export default function App() {
           : await engine.compressQuality({ file, inspection, quality, scale, onStatus: setStatus })
       } else if (mode === 'convert') {
         data = await engine.convert({ file, inspection, outputSpec, onStatus: setStatus })
+      } else if (mode === 'custom') {
+        data = await runCustomFfmpeg({
+          engine,
+          file,
+          inspection,
+          argsText: customArgs,
+          outputExtension: customExtension,
+          onStatus: setStatus,
+        })
       } else {
         data = await engine.resize({ file, inspection, scale, onStatus: setStatus })
       }
@@ -231,6 +257,7 @@ export default function App() {
     try {
       const info = await engine.inspect(file, setStatus)
       setInspection(info)
+      setCustomExtension(defaultCustomExtension(info.kind))
       setStatus(`Selected:\n${file.name}\n\n${describeMedia(info, file.size)}`)
       setPhase('ready')
     } catch (err) {
@@ -258,7 +285,7 @@ export default function App() {
       }}
       onDrop={handleDrop}
     >
-      <main className="desktop-window" aria-label="MediaSqueeze Web">
+      <main className={`desktop-window ${mode === 'custom' ? 'custom-mode' : ''}`} aria-label="MediaSqueeze Web">
         <div className="window-content">
           <h1 className="rainbow-title">MediaSqueeze</h1>
 
@@ -283,6 +310,7 @@ export default function App() {
                 <option value="compress">Compress</option>
                 <option value="convert">Convert</option>
                 <option value="resize" disabled={inspection?.kind === 'audio'}>Resize</option>
+                <option value="custom">Custom</option>
               </select>
             </label>
 
@@ -325,6 +353,18 @@ export default function App() {
               {mode === 'resize' && (
                 <div className="fixed-output">{inspection?.kind === 'image' ? 'Same image type' : 'MP4 output'}</div>
               )}
+              {mode === 'custom' && (
+                <div className="custom-extension">
+                  <span>.</span>
+                  <input
+                    value={customExtension}
+                    onChange={(event) => setCustomExtension(event.target.value.replace(/^\.+/, ''))}
+                    spellCheck="false"
+                    disabled={isBusy}
+                    aria-label="Custom output extension"
+                  />
+                </div>
+              )}
             </label>
 
             <div className={`field-group ${scaleDisabled ? 'disabled-field' : ''}`}>
@@ -345,6 +385,20 @@ export default function App() {
               <span className="field-hint">{scaleHint()}</span>
             </div>
           </div>
+
+          {mode === 'custom' && (
+            <label className="custom-arguments-panel">
+              <span className="field-label">FFmpeg arguments</span>
+              <textarea
+                value={customArgs}
+                onChange={(event) => setCustomArgs(event.target.value)}
+                disabled={isBusy}
+                spellCheck="false"
+                placeholder={'-c:v libx264 -crf 23 -preset medium -c:a aac -b:a 160k\n\nInput/output are added automatically. Use {input} and {output} when their exact position matters.'}
+              />
+              <span className="field-hint custom-hint">Quotes and escaped spaces are supported. You can paste arguments with or without a leading “ffmpeg”.</span>
+            </label>
+          )}
 
           <div className="action-row">
             <button className="control-button action-button" onClick={run} disabled={!inspection || isBusy || convertBlocked}>Start</button>
