@@ -16,7 +16,11 @@ public partial class MainWindow
 
         if (!File.Exists(txtFilePath.Text))
         {
-            MessageBox.Show("Please select a valid file.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                UiText.T("Please select a valid file.", "有効なファイルを選択してください。"),
+                UiText.T("Error", "エラー"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             return;
         }
 
@@ -27,7 +31,8 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Invalid extension", MessageBoxButton.OK, MessageBoxImage.Warning);
+            string message = UiText.LocalizeRuntimeMessage(ex.Message);
+            MessageBox.Show(message, UiText.T("Invalid extension", "無効な拡張子"), MessageBoxButton.OK, MessageBoxImage.Warning);
             txtCustomExtension.Focus();
             txtCustomExtension.SelectAll();
             return;
@@ -40,12 +45,14 @@ public partial class MainWindow
             ApplyCustomModeUi();
             progressBar.Value = 0;
             _lastOutputPath = null;
-            SetStatus("Running custom FFmpeg arguments...");
+            SetStatus(UiText.T("Running custom FFmpeg arguments...", "カスタムFFmpeg引数を実行しています…"));
 
             var progress = new Progress<ProgressUpdate>(update =>
             {
                 progressBar.Value = Math.Clamp(update.Percent, 0, 100);
-                SetStatus($"Running custom FFmpeg arguments... {progressBar.Value:0}%");
+                SetStatus(UiText.T(
+                    $"Running custom FFmpeg arguments... {progressBar.Value:0}%",
+                    $"カスタムFFmpeg引数を実行しています… {progressBar.Value:0}%"));
             });
 
             string outputPath = await CustomFfmpegRunner.RunAsync(
@@ -57,17 +64,18 @@ public partial class MainWindow
 
             _lastOutputPath = outputPath;
             progressBar.Value = 100;
-            SetStatus($"Done:\r\n{outputPath}");
+            SetStatus($"{UiText.T("Done:", "完了:")}\r\n{outputPath}");
             btnOpenFolder.IsEnabled = true;
         }
         catch (OperationCanceledException)
         {
-            SetStatus("Canceled.");
+            SetStatus(UiText.T("Canceled.", "キャンセルしました。"));
         }
         catch (Exception ex)
         {
-            SetStatus($"Error: {ex.Message}");
-            MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            string message = UiText.LocalizeRuntimeMessage(ex.Message);
+            SetStatus($"{UiText.T("Error:", "エラー:")} {message}");
+            MessageBox.Show(message, UiText.T("Error", "エラー"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -108,12 +116,12 @@ public partial class MainWindow
         txtFixedOutput.Visibility = Visibility.Collapsed;
         customExtensionBox.Visibility = Visibility.Visible;
         customArgumentsPanel.Visibility = Visibility.Visible;
-        txtOptionLabel.Content = "Extension";
+        txtOptionLabel.Content = UiText.T("Extension", "拡張子");
 
         cmbScaleMode.IsEnabled = false;
         txtScaleValue.IsEnabled = false;
         txtScaleLabel.Foreground = SystemColors.GrayTextBrush;
-        txtScaleHint.Text = "Controlled by custom FFmpeg arguments.";
+        txtScaleHint.Text = UiText.T("Controlled by custom FFmpeg arguments.", "カスタムFFmpeg引数で指定します。");
 
         if (_inputProfile is not null)
         {
