@@ -94,5 +94,7 @@ jobs:
           if (!h264.videoEncoder) throw new Error(`Raw H264 encoder not resolved: ${JSON.stringify(h264)}`)
           console.log(`Resolved MP4 as ${mp4.videoEncoder} + ${mp4.audioEncoder}; H264 as ${h264.videoEncoder}.`)
           NODE
+      - name: Run real FFmpeg conversion matrix
+        run: node src/ffmpegMatrix.test.mjs
       - name: Build
         run: npm run build
