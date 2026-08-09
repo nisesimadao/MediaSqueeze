@@ -120,25 +120,34 @@ public static class CustomFfmpegRunner
 
     public static List<string> ParseArguments(string text)
     {
+        string source = text ?? string.Empty;
         var result = new List<string>();
         var current = new System.Text.StringBuilder();
         char? quote = null;
-        bool escaped = false;
         bool started = false;
 
-        foreach (char ch in text ?? string.Empty)
+        for (int index = 0; index < source.Length; index++)
         {
-            if (escaped)
-            {
-                current.Append(ch);
-                escaped = false;
-                started = true;
-                continue;
-            }
+            char ch = source[index];
 
             if (ch == '\\' && quote != '\'')
             {
-                escaped = true;
+                char? next = index + 1 < source.Length ? source[index + 1] : null;
+                bool escapesNext = next is not null &&
+                    (char.IsWhiteSpace(next.Value)
+                     || next == '\\'
+                     || next == quote
+                     || (quote is null && next is '"' or '\''));
+
+                if (escapesNext)
+                {
+                    current.Append(next!.Value);
+                    index++;
+                }
+                else
+                {
+                    current.Append('\\');
+                }
                 started = true;
                 continue;
             }
@@ -173,7 +182,6 @@ public static class CustomFfmpegRunner
             started = true;
         }
 
-        if (escaped) current.Append('\\');
         if (quote is not null)
         {
             throw new InvalidOperationException($"Unclosed {(quote == '"' ? "double" : "single")} quote in custom arguments.");
