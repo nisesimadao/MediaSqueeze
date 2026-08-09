@@ -13,11 +13,13 @@ public partial class MainWindow : Window
     private string? _lastOutputPath;
     private bool _formatsLoaded;
     private bool _formatsLoading;
+    private IReadOnlyList<OutputFormatOption> _outputFormats = MediaProcessor.FallbackOutputFormats;
+    private MediaInputProfile? _inputProfile;
 
     public MainWindow()
     {
         InitializeComponent();
-        PopulateOutputFormats(MediaProcessor.FallbackOutputFormats);
+        PopulateOutputFormats(_outputFormats);
         CmbMode_SelectionChanged(this, null!);
 
         if (SystemParameters.ClientAreaAnimation)
@@ -27,7 +29,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_Loaded(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         string? argumentPath = Environment.GetCommandLineArgs()
             .Skip(1)
@@ -36,12 +38,11 @@ public partial class MainWindow : Window
 
         if (argumentPath is not null)
         {
-            SetInputPath(argumentPath);
-            SetStatus($"Received from command line:\r\n{argumentPath}");
+            await SetInputPathAsync(argumentPath);
         }
     }
 
-    private void BtnSelect_Click(object sender, RoutedEventArgs e)
+    private async void BtnSelect_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
@@ -51,7 +52,7 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog() == true)
         {
-            SetInputPath(dialog.FileName);
+            await SetInputPathAsync(dialog.FileName);
         }
     }
 
@@ -73,14 +74,37 @@ public partial class MainWindow : Window
             return;
         }
 
-        _cts = new CancellationTokenSource();
-        SetProcessingState(true);
-        progressBar.Value = 0;
-        _lastOutputPath = null;
-
         try
         {
-            SetStatus("Preparing FFmpeg...");
+            if (request!.Mode == SqueezeMode.Convert)
+            {
+                _inputProfile ??= await FormatCompatibility.InspectAsync(request.InputPath);
+                FormatCompatibilityResult coarse = FormatCompatibility.Assess(request.OutputFormat, _inputProfile);
+                if (!coarse.CanRun)
+                {
+                    MessageBox.Show(coarse.Message, coarse.Label, MessageBoxButton.OK, MessageBoxImage.Warning);
+                    SetStatus($"{coarse.Label}: {coarse.Message}");
+                    return;
+                }
+
+                SetStatus($"Checking {request.OutputFormat.Muxer} compatibility...");
+                OutputFormatOption resolved = await FormatCompatibility.ResolveWithFfmpegAsync(request.OutputFormat, _inputProfile);
+                FormatCompatibilityResult refined = FormatCompatibility.Assess(resolved, _inputProfile);
+                if (!refined.CanRun)
+                {
+                    MessageBox.Show(refined.Message, refined.Label, MessageBoxButton.OK, MessageBoxImage.Warning);
+                    SetStatus($"{refined.Label}: {refined.Message}");
+                    return;
+                }
+
+                request = request with { OutputFormat = resolved };
+                SetStatus($"{refined.Icon} {refined.Label}: {refined.Message}\r\nPreparing FFmpeg...");
+            }
+
+            _cts = new CancellationTokenSource();
+            SetProcessingState(true);
+            progressBar.Value = 0;
+            _lastOutputPath = null;
 
             var progress = new Progress<ProgressUpdate>(update =>
             {
@@ -129,7 +153,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Window_Drop(object sender, DragEventArgs e)
+    private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -139,7 +163,7 @@ public partial class MainWindow : Window
         string[] files = (string[])e.Data.GetData(DataFormats.FileDrop)!;
         if (files.FirstOrDefault(File.Exists) is { } path)
         {
-            SetInputPath(path);
+            await SetInputPathAsync(path);
         }
     }
 
@@ -177,6 +201,7 @@ public partial class MainWindow : Window
         if (mode == SqueezeMode.Convert)
         {
             await EnsureOutputFormatsLoadedAsync();
+            PopulateOutputFormats(_outputFormats);
         }
     }
 
@@ -217,13 +242,14 @@ public partial class MainWindow : Window
         cmbOutputFormat.IsEnabled = false;
         try
         {
-            IReadOnlyList<OutputFormatOption> formats = await MediaProcessor.GetOutputFormatsAsync();
-            PopulateOutputFormats(formats);
+            _outputFormats = await MediaProcessor.GetOutputFormatsAsync();
+            PopulateOutputFormats(_outputFormats);
             _formatsLoaded = true;
         }
         catch (Exception ex)
         {
-            PopulateOutputFormats(MediaProcessor.FallbackOutputFormats);
+            _outputFormats = MediaProcessor.FallbackOutputFormats;
+            PopulateOutputFormats(_outputFormats);
             Debug.WriteLine($"Could not enumerate FFmpeg output formats: {ex}");
         }
         finally
@@ -256,24 +282,37 @@ public partial class MainWindow : Window
 
             foreach (OutputFormatOption format in group)
             {
+                FormatCompatibilityResult? compatibility = _inputProfile is null
+                    ? null
+                    : FormatCompatibility.Assess(format, _inputProfile);
+
+                string description = string.IsNullOrWhiteSpace(format.Description)
+                    ? $"FFmpeg muxer: {format.Muxer}"
+                    : $"{format.Description}\nFFmpeg muxer: {format.Muxer}";
+                string tooltip = compatibility is null
+                    ? description
+                    : $"{compatibility.Icon} {compatibility.Label}: {compatibility.Message}\n{description}";
+
                 cmbOutputFormat.Items.Add(new ComboBoxItem
                 {
-                    Content = format.DisplayLabel,
+                    Content = FormatCompatibility.DecoratedLabel(format, _inputProfile),
                     Tag = format,
-                    ToolTip = string.IsNullOrWhiteSpace(format.Description)
-                        ? $"FFmpeg muxer: {format.Muxer}"
-                        : $"{format.Description}\nFFmpeg muxer: {format.Muxer}"
+                    IsEnabled = compatibility?.CanRun ?? true,
+                    ToolTip = tooltip
                 });
             }
         }
 
+        string preferredId = previousId is not null && formats.Any(format => format.Id == previousId && (_inputProfile is null || FormatCompatibility.Assess(format, _inputProfile).CanRun))
+            ? previousId
+            : FormatCompatibility.PreferredFormatId(_inputProfile, formats);
+
         ComboBoxItem? selected = cmbOutputFormat.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => item.Tag is OutputFormatOption format && format.Id == previousId)
+            .FirstOrDefault(item => item.IsEnabled && item.Tag is OutputFormatOption format && format.Id == preferredId)
             ?? cmbOutputFormat.Items
                 .OfType<ComboBoxItem>()
-                .FirstOrDefault(item => item.Tag is OutputFormatOption format && format.Id == "mp4")
-            ?? cmbOutputFormat.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag is OutputFormatOption);
+                .FirstOrDefault(item => item.IsEnabled && item.Tag is OutputFormatOption);
 
         if (selected is not null)
         {
@@ -373,12 +412,34 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetInputPath(string path)
+    private async Task SetInputPathAsync(string path)
     {
         txtFilePath.Text = path;
         btnOpenFolder.IsEnabled = false;
         _lastOutputPath = null;
-        SetStatus($"Selected:\r\n{path}");
+        _inputProfile = null;
+        SetStatus($"Selected:\r\n{path}\r\n\r\nAnalyzing media...");
+
+        try
+        {
+            _inputProfile = await FormatCompatibility.InspectAsync(path);
+            PopulateOutputFormats(_outputFormats);
+            string streams = DescribeInputProfile(_inputProfile);
+            SetStatus($"Selected:\r\n{path}\r\n\r\n{streams}\r\n★ recommended  ✓ compatible  △ drops streams  ⚙ special  × unsupported");
+        }
+        catch (Exception ex)
+        {
+            PopulateOutputFormats(_outputFormats);
+            SetStatus($"Selected:\r\n{path}\r\n\r\nCould not pre-check formats: {ex.Message}");
+        }
+    }
+
+    private static string DescribeInputProfile(MediaInputProfile profile)
+    {
+        var parts = new List<string> { profile.Kind.ToString() };
+        if (!string.IsNullOrWhiteSpace(profile.VideoCodec)) parts.Add($"video {profile.VideoCodec}");
+        if (!string.IsNullOrWhiteSpace(profile.AudioCodec)) parts.Add($"audio {profile.AudioCodec}");
+        return string.Join("  •  ", parts);
     }
 
     private void SetStatus(string message)

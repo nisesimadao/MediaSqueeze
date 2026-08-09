@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - support-all-media-formats
+      - smart-format-compatibility
   pull_request:
 
 permissions:
@@ -65,5 +66,35 @@ jobs:
           if (formats.length < 30) throw new Error(`Unexpectedly small FFmpeg catalog: ${formats.length}`)
           console.log(`Validated ${formats.length} output formats across ${groups.length} categories.`)
           NODE
+      - name: Test smart compatibility
+        run: node src/formatCompatibility.test.mjs
+      - name: Validate real muxer defaults
+        shell: bash
+        run: |
+          ffmpeg -hide_banner -h muxer=mp4 > /tmp/mp4-help.txt 2>&1
+          ffmpeg -hide_banner -h muxer=h264 > /tmp/h264-help.txt 2>&1
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { resolveFormatFromMuxerHelp } from './src/formatCompatibility.js'
+
+          const encoders = readFileSync('/tmp/encoders.txt', 'utf8')
+          const video = { kind: 'video', hasVideo: true, hasAudio: true }
+          const mp4 = resolveFormatFromMuxerHelp({
+            id: 'muxer:mp4-test', label: 'MP4 test', category: 'Video', muxer: 'mp4',
+            extension: 'mp4', media: 'auto', preset: 'auto', description: 'test',
+          }, readFileSync('/tmp/mp4-help.txt', 'utf8'), encoders, video)
+          if (!mp4.supportsVideo || !mp4.supportsAudio) throw new Error(`MP4 defaults not detected: ${JSON.stringify(mp4)}`)
+          if (!mp4.videoEncoder || !mp4.audioEncoder) throw new Error(`MP4 encoders not resolved: ${JSON.stringify(mp4)}`)
+
+          const h264 = resolveFormatFromMuxerHelp({
+            id: 'muxer:h264-test', label: 'H264 test', category: 'Raw / Elementary Streams', muxer: 'h264',
+            extension: 'h264', media: 'auto', preset: 'auto', description: 'test',
+          }, readFileSync('/tmp/h264-help.txt', 'utf8'), encoders, video)
+          if (!h264.supportsVideo || h264.supportsAudio) throw new Error(`Raw H264 support wrong: ${JSON.stringify(h264)}`)
+          if (!h264.videoEncoder) throw new Error(`Raw H264 encoder not resolved: ${JSON.stringify(h264)}`)
+          console.log(`Resolved MP4 as ${mp4.videoEncoder} + ${mp4.audioEncoder}; H264 as ${h264.videoEncoder}.`)
+          NODE
+      - name: Run real FFmpeg conversion matrix
+        run: node src/ffmpegMatrix.test.mjs
       - name: Build
         run: npm run build

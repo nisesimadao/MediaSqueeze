@@ -51,6 +51,8 @@ export default function App() {
   const isBusy = phase === 'analyzing' || phase === 'processing'
   const outputOptions = flattenFormats(formatGroups)
   const outputSpec = outputOptions.find((option) => option.id === outputFormat) || outputOptions[0] || null
+  const formatCompatibility = outputSpec?.compatibility || null
+  const convertBlocked = mode === 'convert' && formatCompatibility?.canRun === false
   const scaleDisabled = mode === 'convert' || inspection?.kind === 'audio'
   const scaleValueDisabled = scaleDisabled || scaleMode === 'original'
   const optionLabel = mode === 'compress' ? 'Quality' : mode === 'convert' ? 'Format' : 'Output'
@@ -159,6 +161,12 @@ export default function App() {
     if (!validateScale()) return
     if (mode === 'resize' && inspection.kind === 'audio') {
       setError('Resize is not available for audio files.')
+      return
+    }
+    if (mode === 'convert' && formatCompatibility?.canRun === false) {
+      const message = `${formatCompatibility.label}: ${formatCompatibility.message}`
+      setError(message)
+      setStatus(`Error: ${message}`)
       return
     }
 
@@ -294,15 +302,25 @@ export default function App() {
                 </div>
               )}
               {mode === 'convert' && (
-                <select value={outputSpec?.id || ''} onChange={(event) => setOutputFormat(event.target.value)} disabled={isBusy || !outputOptions.length}>
-                  {formatGroups.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.options.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                <>
+                  <select value={outputSpec?.id || ''} onChange={(event) => setOutputFormat(event.target.value)} disabled={isBusy || !outputOptions.length}>
+                    {formatGroups.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((option) => (
+                          <option key={option.id} value={option.id} disabled={option.compatibility?.canRun === false}>{option.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {formatCompatibility && (
+                    <span
+                      className="field-hint"
+                      title={`${formatCompatibility.label}: ${formatCompatibility.message}`}
+                    >
+                      {formatCompatibility.icon} {formatCompatibility.label} — {formatCompatibility.message}
+                    </span>
+                  )}
+                </>
               )}
               {mode === 'resize' && (
                 <div className="fixed-output">{inspection?.kind === 'image' ? 'Same image type' : 'MP4 output'}</div>
@@ -329,7 +347,7 @@ export default function App() {
           </div>
 
           <div className="action-row">
-            <button className="control-button action-button" onClick={run} disabled={!inspection || isBusy}>Start</button>
+            <button className="control-button action-button" onClick={run} disabled={!inspection || isBusy || convertBlocked}>Start</button>
             <button className="control-button action-button" onClick={cancel} disabled={phase !== 'processing'}>Cancel</button>
             {result ? (
               <a className="control-button action-button download-action" href={result.url} download={result.filename}>Download Output</a>

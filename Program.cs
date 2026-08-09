@@ -297,6 +297,7 @@ public static class MediaProcessor
     private static string BuildConvertOptions(OutputFormatOption format, MediaKind kind, bool hasVideo, bool hasAudio)
     {
         var parts = new List<string>();
+        bool resolved = FormatCompatibility.TryResolvedSupport(format, out bool supportsVideo, out bool supportsAudio);
 
         if (format.Media == "audio")
         {
@@ -328,16 +329,32 @@ public static class MediaProcessor
         {
             if (hasVideo)
             {
-                AddVideoPreset(parts, format);
+                if (resolved && !supportsVideo)
+                {
+                    parts.Add("-vn");
+                }
+                else
+                {
+                    AddVideoPreset(parts, format);
+                }
             }
+
             if (hasAudio)
             {
-                AddContainerAudio(parts, format);
+                if (resolved && !supportsAudio)
+                {
+                    parts.Add("-an");
+                }
+                else
+                {
+                    AddContainerAudio(parts, format);
+                }
             }
             else
             {
                 parts.Add("-an");
             }
+
             if ((format.Id == "mp4" || format.Id == "mov") && hasVideo)
             {
                 parts.Add("-movflags +faststart");
@@ -365,11 +382,19 @@ public static class MediaProcessor
             case "libx264":
                 parts.Add("-preset veryfast -crf 24 -pix_fmt yuv420p");
                 break;
+            case "libx265":
+                parts.Add("-preset fast -crf 27 -pix_fmt yuv420p");
+                break;
             case "libvpx-vp9":
             case "libvpx":
             case "vp8":
             case "vp9":
                 parts.Add("-crf 31 -b:v 0");
+                break;
+            case "libaom-av1":
+            case "libsvtav1":
+            case "librav1e":
+                parts.Add("-crf 32");
                 break;
             case "mpeg4":
                 parts.Add("-q:v 5");
@@ -377,6 +402,13 @@ public static class MediaProcessor
             case "mpeg2video":
             case "mpeg1video":
                 parts.Add("-q:v 4");
+                break;
+            case "mjpeg":
+                parts.Add("-q:v 2");
+                break;
+            case "libwebp":
+            case "webp":
+                parts.Add("-quality 88");
                 break;
         }
     }
@@ -406,6 +438,10 @@ public static class MediaProcessor
             parts.Add($"-c:a {format.AudioEncoder}");
         }
 
+        if (format.AudioEncoder?.StartsWith("pcm_", StringComparison.OrdinalIgnoreCase) == true || format.AudioEncoder == "flac")
+        {
+            return;
+        }
         if (format.Preset == "vorbis")
         {
             parts.Add("-q:a 5");
@@ -421,6 +457,10 @@ public static class MediaProcessor
         if (!string.IsNullOrWhiteSpace(format.ImageEncoder))
         {
             parts.Add($"-c:v {format.ImageEncoder}");
+        }
+        else if (!string.IsNullOrWhiteSpace(format.VideoEncoder))
+        {
+            parts.Add($"-c:v {format.VideoEncoder}");
         }
 
         switch (format.Preset)
