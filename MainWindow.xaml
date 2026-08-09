@@ -58,7 +58,7 @@
 
             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                 <Label Content="Mode" Target="{Binding ElementName=cmbMode}" FontWeight="Bold" Padding="0,0,0,2"/>
-                <ComboBox x:Name="cmbMode" SelectionChanged="CmbMode_SelectionChanged">
+                <ComboBox x:Name="cmbMode" SelectionChanged="CustomMode_SelectionChanged">
                     <ComboBoxItem Content="Compress" Tag="compress" IsSelected="True"/>
                     <ComboBoxItem Content="Convert" Tag="convert"/>
                     <ComboBoxItem Content="Resize" Tag="resize"/>
@@ -131,7 +131,7 @@
         </Grid>
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,10">
-            <Button x:Name="btnRun" Content="Start" Width="116" Click="BtnRun_Click"/>
+            <Button x:Name="btnRun" Content="Start" Width="116" Click="CustomAwareBtnRun_Click"/>
             <Button x:Name="btnCancel" Content="Cancel" Width="116" Margin="10,2,2,2"
                     Click="BtnCancel_Click" IsEnabled="False"/>
             <Button x:Name="btnOpenFolder" Content="Show Output" Width="116" Margin="10,2,2,2"
