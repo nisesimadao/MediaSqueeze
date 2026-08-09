@@ -1,22 +1,29 @@
 const SAFE_EXTENSION = /^[a-z0-9]{1,16}$/i
 
 export function parseCustomArguments(text) {
+  const source = String(text || '')
   const args = []
   let current = ''
   let quote = null
-  let escaped = false
   let started = false
 
-  for (const char of String(text || '')) {
-    if (escaped) {
-      current += char
-      escaped = false
-      started = true
-      continue
-    }
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]
 
     if (char === '\\' && quote !== "'") {
-      escaped = true
+      const next = source[index + 1]
+      const escapesNext = next !== undefined && (
+        /\s/.test(next)
+        || next === '\\'
+        || next === quote
+        || (!quote && (next === '"' || next === "'"))
+      )
+      if (escapesNext) {
+        current += next
+        index += 1
+      } else {
+        current += '\\'
+      }
       started = true
       continue
     }
@@ -47,7 +54,6 @@ export function parseCustomArguments(text) {
     started = true
   }
 
-  if (escaped) current += '\\'
   if (quote) throw new Error(`Unclosed ${quote === '"' ? 'double' : 'single'} quote in custom arguments.`)
   if (started) args.push(current)
 
