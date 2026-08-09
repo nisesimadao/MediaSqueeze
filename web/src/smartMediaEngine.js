@@ -1,4 +1,4 @@
-import { MediaEngine as BaseMediaEngine } from './mediaEngine'
+import { MediaEngine } from './mediaEngine'
 import { buildConvertArguments, buildOutputFormatGroups, FALLBACK_FORMAT_GROUPS } from './formatCatalog'
 import {
   assessFormatCompatibility,
@@ -7,23 +7,29 @@ import {
   resolveFormatFromMuxerHelp,
 } from './formatCompatibility'
 
+const originalInspect = MediaEngine.prototype.inspect
 const safeBase = (name) => (name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}._-]+/gu, '_') || 'media').slice(0, 80)
+let installed = false
 
-export class MediaEngine extends BaseMediaEngine {
-  constructor() {
-    super()
-    this.smartEncoderText = ''
-    this.smartMuxerHelp = new Map()
-    this.lastInspection = null
-  }
+function ensureSmartState(engine) {
+  if (typeof engine.smartEncoderText !== 'string') engine.smartEncoderText = ''
+  if (!(engine.smartMuxerHelp instanceof Map)) engine.smartMuxerHelp = new Map()
+  if (!('lastInspection' in engine)) engine.lastInspection = null
+}
 
-  async inspect(file, onStatus) {
-    const inspection = await super.inspect(file, onStatus)
+export function installSmartMediaEngine() {
+  if (installed) return
+  installed = true
+
+  MediaEngine.prototype.inspect = async function inspectSmart(file, onStatus) {
+    ensureSmartState(this)
+    const inspection = await originalInspect.call(this, file, onStatus)
     this.lastInspection = inspection
     return inspection
   }
 
-  async listOutputFormats(onStatus) {
+  MediaEngine.prototype.listOutputFormats = async function listOutputFormatsSmart(onStatus) {
+    ensureSmartState(this)
     if (!this.formatGroupsCache) {
       await this.load(onStatus)
       onStatus?.('Reading supported output formats...')
@@ -42,7 +48,8 @@ export class MediaEngine extends BaseMediaEngine {
     return decorateFormatGroups(this.formatGroupsCache, this.lastInspection)
   }
 
-  async checkOutputFormat(outputSpec, inspection, onStatus) {
+  MediaEngine.prototype.checkOutputFormat = async function checkOutputFormatSmart(outputSpec, inspection, onStatus) {
+    ensureSmartState(this)
     if (!outputSpec) {
       return {
         spec: outputSpec,
@@ -73,7 +80,7 @@ export class MediaEngine extends BaseMediaEngine {
     }
   }
 
-  async convert({ file, inspection, outputSpec, onStatus }) {
+  MediaEngine.prototype.convert = async function convertSmart({ file, inspection, outputSpec, onStatus }) {
     await this.load(onStatus)
     if (!outputSpec) throw new Error('Choose an output format.')
 
@@ -98,7 +105,8 @@ export class MediaEngine extends BaseMediaEngine {
       const warning = checked.compatibility.level === 'stream-drop'
         ? ` (${checked.compatibility.message})`
         : ''
-      onStatus?.(`Converting to ${resolved.label.replace(/^[★✓△⚙×]\s*/, '')}${codecNote ? ` — ${codecNote}` : ''}${warning}`)
+      const label = resolved.label.replace(/^[★✓△⚙×]\s*/, '')
+      onStatus?.(`Converting to ${label}${codecNote ? ` — ${codecNote}` : ''}${warning}`)
 
       await this.execWithFallback(args, outputPath)
       return await this.readOutputSet(outputDir, baseName, resolved.extension)
