@@ -1,0 +1,11 @@
+{
+  "name": "MediaSqueeze Web",
+  "short_name": "MediaSqueeze",
+  "description": "ブラウザだけで動画・音声・画像を変換・圧縮できる MediaSqueeze Web",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171717",
+  "theme_color": "#171717",
+  "categories": ["utilities", "productivity"]
+}
