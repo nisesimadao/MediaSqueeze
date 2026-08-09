@@ -1,166 +1,147 @@
 # MediaSqueeze
 
-Windowsでメディアファイルを手軽に圧縮・変換・リサイズするツール。
+FFmpegを使って、動画・音声・画像を圧縮・変換・リサイズするMediaSqueezeのデスクトップ/W​​eb実装です。
 
-動画や音声ファイルを、FFmpegを使ってシンプルなGUIから処理できます。ファイルを選択するだけでなく、Windowsの「プログラムから開く」やドラッグ&ドロップにも対応しているため、エクスプローラーからそのまま素早く変換できます。
+- **Windows版**: .NET 9 / WPF。ドラッグ&ドロップ、「プログラムから開く」、進捗・キャンセル・出力表示に対応。
+- **Web版**: React + Vite + ffmpeg.wasm。処理はブラウザ内で完結し、PWAのオフライン利用にも対応。
 
-小さな操作画面に、WPFのFluentテーマを適用した軽量なデスクトップアプリです。
+## 特徴
 
-> 注意: ビルド設定や実行環境によっては、FFmpeg / ffprobe が必要です。Release publishには同梱して使う想定です。
+- **動画・音声・画像をCompress**
+  - 動画: MP4
+  - 音声: AAC / M4A
+  - 静止画: WebP
+  - High / Medium / Low と容量ターゲットを利用可能
+- **FFmpegが実際に対応している出力形式を列挙**
+  - 起動中のFFmpegへ `-muxers` / `-encoders` / `-devices` を問い合わせるため、固定された小さな形式リストではありません。
+  - 一般によく使う形式を先頭に置き、その後をカテゴリ別に整理します。
+- **常識的な優先順**
+  - Video: MP4 → MOV → MKV → WebM → AVI → MPEG-TS …
+  - Audio: MP3 → M4A/AAC → WAV → FLAC → OGG/Opus …
+  - Images: JPEG → PNG → WebP → AVIF → GIF/APNG → TIFF/BMP …
+- **カテゴリ分け**
+  - Video
+  - Audio
+  - Images & Animation
+  - Streaming & Broadcast
+  - Raw / Elementary Streams
+  - Subtitles & Data
+  - Advanced / Other
+- **Resize**: Percent / Width / Height指定。音声では無効。
+- **ブラウザの複数ファイル出力**: HLS/DASHなど複数ファイルを生成する形式はZIPにまとめてダウンロード。
+- **実ランタイム追従**: FFmpegビルドに存在しないmuxer/encoderは通常の候補として出しません。
+
+> AdvancedのmuxerはFFmpeg側の仕様上、入力ストリーム・codec・追加オプションの組み合わせによっては変換できないものがあります。MediaSqueezeはmuxerを列挙しますが、FFmpeg自身が成立しない組み合わせを拒否する場合があります。
 
 ## プロジェクト構成
 
 ```text
 MediaSqueeze/
-├── App.xaml                # アプリ全体のWPF設定・Fluentテーマ
-├── App.xaml.cs             # WPFアプリケーションエントリ
-├── MainWindow.xaml         # メインGUI
-├── MainWindow.xaml.cs      # ファイル受け取り・UI制御
-├── Program.cs              # FFmpeg処理ロジック
-├── MediaSqueeze.csproj     # .NET / WPFプロジェクト
-├── MediaSqueeze.sln        # Visual Studioソリューション
-├── Ver2.0/                 # 旧WPF試作版
-└── README.md               # このファイル
+├── App.xaml
+├── App.xaml.cs
+├── MainWindow.xaml
+├── MainWindow.xaml.cs
+├── Program.cs             # Desktop FFmpeg処理
+├── FormatCatalog.cs       # Desktopの動的出力形式カタログ
+├── MediaSqueeze.csproj
+├── MediaSqueeze.sln
+├── web/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── mediaEngine.js
+│   │   └── formatCatalog.js
+│   └── public/
+│       └── service-worker.js
+└── README.md
 ```
 
-## 特徴
+## Windows版
 
-- **「プログラムから開く」対応**: 起動引数で渡されたファイルパスを自動で読み込み
-- **ドラッグ&ドロップ対応**: ウィンドウへファイルを落とすだけで選択
-- **動画圧縮**: 高品質・中品質・低品質・10MBモードを選択可能
-- **形式変換**: MP4 / MOV / MKV / MP3 / M4A / WAV へ変換
-- **サイズ変更**: 倍率・幅・高さ指定でアスペクト比を保ったままリサイズ
-- **Fluent UI**: `PresentationFramework.Fluent` を使ったWindowsらしい見た目
-- **進捗表示**: FFmpeg処理の進行状況をプログレスバーで表示
-- **キャンセル対応**: 処理中でもキャンセル可能
-- **保存先を開く**: 完了後に出力ファイルをエクスプローラーで選択表示
-- **軽量構成**: WPF + FFmpegだけのシンプルな構成
+### 要件
 
-## システム要件
-
-- Windows 10 / Windows 11
+- Windows 10 / 11
 - .NET 9 Runtime
 - FFmpeg / ffprobe
 
-## インストール
+アプリフォルダにFFmpegが無い場合、Xabe.FFmpeg Downloaderを使ってセットアップします。
 
-### ビルド済みアプリ
-
-1. [Releases](https://github.com/nisesimadao/MediaSqueeze/releases) から最新版をダウンロード
-2. ZIPを展開
-3. `MediaSqueeze.exe` を起動
-
-### ソースからビルド
+### ビルド
 
 ```powershell
-# リポジトリを取得
 git clone https://github.com/nisesimadao/MediaSqueeze.git
 cd MediaSqueeze
-
-# ビルド
 dotnet build MediaSqueeze.sln
 ```
 
-### 配布用にpublish
+### Publish
 
 ```powershell
 dotnet publish MediaSqueeze.csproj -c Release
 ```
 
-出力先:
+## Web版
 
-```text
-bin/Release/net9.0-windows/publish/
+```bash
+cd web
+npm install
+npm run dev
 ```
 
-## 使い方
+Production build:
 
-### 通常使用
+```bash
+npm run build
+```
 
-1. `MediaSqueeze.exe` を起動
-2. `Select...` からメディアファイルを選択
-3. `Mode` で処理内容を選択
-4. 必要に応じて品質・形式・サイズ指定を選択
-5. `Start` を押して処理開始
-6. 完了後、`Show Output` で保存先を開く
+Web版はffmpeg.wasmのsingle-thread coreを使用します。入力ファイルはサーバーへアップロードせず、ブラウザの仮想ファイルシステム内で処理します。
 
-### 「プログラムから開く」で使う
+## Compress
 
-1. メディアファイルを右クリック
-2. 「プログラムから開く」を選択
-3. `MediaSqueeze.exe` を指定
-4. 起動時にファイルパスが自動入力されます
+### 動画
 
-### ドラッグ&ドロップ
+High / Medium / Lowではビットレートプリセットを使います。容量指定では動画長からビットレート予算を計算し、音声ストリームの有無も考慮します。
 
-- ウィンドウへファイルをドラッグ&ドロップすると、そのファイルが処理対象になります
+### 音声
 
-## 設定オプション
+AAC / M4Aへ圧縮します。容量指定時は再生時間から音声ビットレートを計算します。
 
-### モード
+### 静止画
 
-- **Compress**: 動画をMP4として圧縮
-- **Convert**: 指定した形式へ変換
-- **Resize**: 指定した解像度へリサイズ
+WebPへ圧縮します。High / Medium / Lowでは品質値を変更します。容量指定では品質を段階的に下げ、それでも大きい場合は解像度も縮小してターゲット容量へ寄せます。
 
-### 圧縮品質
+## Convert
 
-- **High**: 高品質
-- **Medium**: 標準設定
-- **Low**: 容量優先
-- **10MB**: 10MB以内を目指すモード
+MediaSqueezeは、実行中FFmpegの以下の情報から候補を構築します。
 
-### 変換形式
+```text
+ffmpeg -hide_banner -muxers
+ffmpeg -hide_banner -encoders
+ffmpeg -hide_banner -devices
+```
 
-- **動画**: MP4 / MOV / MKV
-- **音声**: MP3 / M4A / WAV
+そのため「FFmpeg一般が対応しているらしい形式」を決め打ちするのではなく、**その端末/ブラウザで実際に使っているFFmpegビルドが持つ出力muxer**が基準になります。
 
-### サイズ指定
+MP4、MP3、JPEGなど一般的な形式には適切なencoder設定をMediaSqueeze側で用意し、それ以外の高度なmuxerはFFmpegの既定選択を利用します。
 
-- **Original**: 元のサイズを維持
-- **Percent**: 元動画に対する倍率で指定
-- **Width**: 幅だけを指定し、高さは自動計算
-- **Height**: 高さだけを指定し、幅は自動計算
+## Resize
 
-## 技術仕様
+- **Original**: 元サイズ
+- **Percent**: 元サイズに対する倍率
+- **Width**: 幅指定、高さ自動
+- **Height**: 高さ指定、幅自動
 
-### コア技術
+動画/画像で利用できます。音声では利用できません。
 
-- **C# / .NET 9**: アプリケーション本体
-- **WPF**: WindowsネイティブGUI
-- **PresentationFramework.Fluent**: Fluentテーマ
-- **Xabe.FFmpeg**: FFmpeg操作ラッパー
-- **FFmpeg / ffprobe**: メディア処理エンジン
+## CI
 
-### 処理仕様
+GitHub Actionsで両実装を検証します。
 
-- 出力ファイルは入力ファイルと同じフォルダに生成
-- 既存ファイルがある場合は `_1`, `_2` のように連番を付与
-- 圧縮とリサイズの出力形式はMP4
-- 幅指定・高さ指定ではFFmpegの `-2` 指定によりアスペクト比を維持
-- 倍率指定では幅・高さに同じ倍率を適用し、偶数ピクセルへ丸め
-- 変換モードでは選択した拡張子で出力
+- Windows runner: `.NET 9 / WPF` Release build
+- Ubuntu runner: 実FFmpegのmuxer/encoder/device一覧を使った形式カタログ検証
+- Web: Vite production build
 
-## トラブルシューティング
+形式カタログ検証では、MP4・MOV・MKV・WebM・MP3・M4A・WAV・FLAC・JPEG・PNG・WebPなどの主要形式が存在し、一般的な優先順が保たれていることをチェックします。
 
-### よくある問題
+## 注意
 
-**Q: 起動してもファイルが読み込まれない**
-
-A: 「プログラムから開く」で渡されるパスが実在するファイルか確認してください。フォルダではなくファイルを指定する必要があります。
-
-**Q: 変換に失敗する**
-
-A: `ffmpeg.exe` と `ffprobe.exe` がアプリと同じフォルダにあるか確認してください。
-
-**Q: 10MBモードでも10MBを超える**
-
-A: FFmpegの `-fs 10M` による制限を使っていますが、入力ファイルやコンテナ形式によっては期待通りにならない場合があります。
-
-**Q: 保存先が分からない**
-
-A: 完了後に表示されるパスを確認するか、`Show Output` を押してください。
-
-## 開発メモ
-
-このプロジェクトは、もともとのコンソール版MediaSqueezeをWPF GUI化したものです。`Ver2.0/` には旧WPF試作版が残っていますが、ルートの `MediaSqueeze.csproj` ではビルド対象から除外しています。
+FFmpegの「muxerが存在する」ことと、「どんな入力でもその形式へ自動変換できる」ことは同義ではありません。特にストリーミング、raw stream、字幕/data、特殊コンテナはcodecや追加オプションに制約があります。MediaSqueezeではそれらもAdvanced用途として表示しますが、成立しない組み合わせではFFmpegのエラーを返します。

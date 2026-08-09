@@ -1,0 +1,69 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - support-all-media-formats
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop (.NET 9 / WPF)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Restore
+        run: dotnet restore MediaSqueeze.sln
+      - name: Build
+        run: dotnet build MediaSqueeze.sln -c Release --no-restore
+
+  web:
+    name: Web (Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install
+      - name: Install FFmpeg for catalog validation
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Validate FFmpeg format catalog
+        shell: bash
+        run: |
+          ffmpeg -hide_banner -muxers > /tmp/muxers.txt 2>&1
+          ffmpeg -hide_banner -encoders > /tmp/encoders.txt 2>&1
+          ffmpeg -hide_banner -devices > /tmp/devices.txt 2>&1
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { buildOutputFormatGroups, flattenFormats } from './src/formatCatalog.js'
+
+          const groups = buildOutputFormatGroups(
+            readFileSync('/tmp/muxers.txt', 'utf8'),
+            readFileSync('/tmp/encoders.txt', 'utf8'),
+            readFileSync('/tmp/devices.txt', 'utf8'),
+          )
+          const formats = flattenFormats(groups)
+          const ids = formats.map((format) => format.id)
+          for (const required of ['mp4', 'mov', 'mkv', 'webm', 'mp3', 'm4a', 'wav', 'flac', 'jpg', 'png', 'webp']) {
+            if (!ids.includes(required)) throw new Error(`Missing common format: ${required}`)
+          }
+          if (ids.indexOf('mp4') > ids.indexOf('mov')) throw new Error('MP4 should rank before MOV')
+          if (ids.indexOf('mp3') > ids.indexOf('m4a')) throw new Error('MP3 should rank before M4A')
+          if (ids.indexOf('jpg') > ids.indexOf('png')) throw new Error('JPEG should rank before PNG')
+          if (formats.length < 30) throw new Error(`Unexpectedly small FFmpeg catalog: ${formats.length}`)
+          console.log(`Validated ${formats.length} output formats across ${groups.length} categories.`)
+          NODE
+      - name: Build
+        run: npm run build

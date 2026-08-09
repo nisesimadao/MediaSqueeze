@@ -11,10 +11,13 @@ public partial class MainWindow : Window
 {
     private CancellationTokenSource? _cts;
     private string? _lastOutputPath;
+    private bool _formatsLoaded;
+    private bool _formatsLoading;
 
     public MainWindow()
     {
         InitializeComponent();
+        PopulateOutputFormats(MediaProcessor.FallbackOutputFormats);
         CmbMode_SelectionChanged(this, null!);
 
         if (SystemParameters.ClientAreaAnimation)
@@ -43,7 +46,7 @@ public partial class MainWindow : Window
         var dialog = new OpenFileDialog
         {
             Title = "Select media file",
-            Filter = "Media files|*.mp4;*.mov;*.mkv;*.avi;*.mp3;*.m4a;*.wav;*.flac;*.aac;*.webm|All files|*.*"
+            Filter = "Media files|*.mp4;*.mov;*.mkv;*.avi;*.webm;*.mpg;*.mpeg;*.ts;*.mp3;*.m4a;*.aac;*.wav;*.flac;*.ogg;*.opus;*.aiff;*.jpg;*.jpeg;*.png;*.webp;*.avif;*.heic;*.heif;*.bmp;*.tif;*.tiff;*.gif;*.apng|All files|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -58,6 +61,11 @@ public partial class MainWindow : Window
         {
             MessageBox.Show("Please select a valid file.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
+        }
+
+        if (SelectedMode() == SqueezeMode.Convert)
+        {
+            await EnsureOutputFormatsLoadedAsync();
         }
 
         if (!TryBuildRequest(out SqueezeRequest? request))
@@ -135,7 +143,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CmbMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void CmbMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (cmbQuality is null || cmbOutputFormat is null || txtFixedOutput is null ||
             cmbScaleMode is null || txtScaleValue is null)
@@ -165,6 +173,11 @@ public partial class MainWindow : Window
             SelectScaleMode(ScaleMode.Percent);
             txtScaleValue.Text = "50";
         }
+
+        if (mode == SqueezeMode.Convert)
+        {
+            await EnsureOutputFormatsLoadedAsync();
+        }
     }
 
     private void CmbScaleMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -192,11 +205,88 @@ public partial class MainWindow : Window
         };
     }
 
+    private async Task EnsureOutputFormatsLoadedAsync()
+    {
+        if (_formatsLoaded || _formatsLoading)
+        {
+            return;
+        }
+
+        _formatsLoading = true;
+        bool wasEnabled = cmbOutputFormat.IsEnabled;
+        cmbOutputFormat.IsEnabled = false;
+        try
+        {
+            IReadOnlyList<OutputFormatOption> formats = await MediaProcessor.GetOutputFormatsAsync();
+            PopulateOutputFormats(formats);
+            _formatsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            PopulateOutputFormats(MediaProcessor.FallbackOutputFormats);
+            Debug.WriteLine($"Could not enumerate FFmpeg output formats: {ex}");
+        }
+        finally
+        {
+            _formatsLoading = false;
+            cmbOutputFormat.IsEnabled = wasEnabled;
+        }
+    }
+
+    private void PopulateOutputFormats(IReadOnlyList<OutputFormatOption> formats)
+    {
+        if (cmbOutputFormat is null)
+        {
+            return;
+        }
+
+        string? previousId = SelectedOutputFormat()?.Id;
+        cmbOutputFormat.Items.Clear();
+
+        foreach (IGrouping<string, OutputFormatOption> group in formats.GroupBy(format => format.Category))
+        {
+            cmbOutputFormat.Items.Add(new ComboBoxItem
+            {
+                Content = group.Key,
+                IsEnabled = false,
+                Focusable = false,
+                FontWeight = FontWeights.Bold,
+                Foreground = SystemColors.GrayTextBrush
+            });
+
+            foreach (OutputFormatOption format in group)
+            {
+                cmbOutputFormat.Items.Add(new ComboBoxItem
+                {
+                    Content = format.DisplayLabel,
+                    Tag = format,
+                    ToolTip = string.IsNullOrWhiteSpace(format.Description)
+                        ? $"FFmpeg muxer: {format.Muxer}"
+                        : $"{format.Description}\nFFmpeg muxer: {format.Muxer}"
+                });
+            }
+        }
+
+        ComboBoxItem? selected = cmbOutputFormat.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag is OutputFormatOption format && format.Id == previousId)
+            ?? cmbOutputFormat.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => item.Tag is OutputFormatOption format && format.Id == "mp4")
+            ?? cmbOutputFormat.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag is OutputFormatOption);
+
+        if (selected is not null)
+        {
+            cmbOutputFormat.SelectedItem = selected;
+        }
+    }
+
     private bool TryBuildRequest(out SqueezeRequest? request)
     {
         SqueezeMode mode = SelectedMode();
         string quality = SelectedTag(cmbQuality, "medium");
-        string outputExtension = SelectedTag(cmbOutputFormat, "mp4");
+        OutputFormatOption outputFormat = SelectedOutputFormat()
+            ?? MediaProcessor.FallbackOutputFormats.First(format => format.Id == "mp4");
         ScaleMode scaleMode = SelectedScaleMode();
         int scaleValue = 0;
 
@@ -228,7 +318,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        request = new SqueezeRequest(txtFilePath.Text, mode, quality, outputExtension, scaleMode, scaleValue);
+        request = new SqueezeRequest(txtFilePath.Text, mode, quality, outputFormat, scaleMode, scaleValue);
         return true;
     }
 
@@ -245,6 +335,11 @@ public partial class MainWindow : Window
     private static string SelectedTag(ComboBox comboBox, string fallback)
     {
         return (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback;
+    }
+
+    private OutputFormatOption? SelectedOutputFormat()
+    {
+        return (cmbOutputFormat.SelectedItem as ComboBoxItem)?.Tag as OutputFormatOption;
     }
 
     private ScaleMode SelectedScaleMode()
@@ -299,7 +394,7 @@ public partial class MainWindow : Window
         btnOpenFolder.IsEnabled = !isProcessing && _lastOutputPath is not null && File.Exists(_lastOutputPath);
         cmbMode.IsEnabled = !isProcessing;
         cmbQuality.IsEnabled = !isProcessing;
-        cmbOutputFormat.IsEnabled = !isProcessing;
+        cmbOutputFormat.IsEnabled = !isProcessing && !_formatsLoading;
         cmbScaleMode.IsEnabled = !isProcessing && SelectedMode() != SqueezeMode.Convert;
         txtScaleValue.IsEnabled = !isProcessing && SelectedMode() != SqueezeMode.Convert && SelectedScaleMode() != ScaleMode.Original;
     }

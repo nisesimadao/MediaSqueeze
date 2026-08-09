@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { MediaEngine, OUTPUTS } from './mediaEngine'
+import { MediaEngine } from './mediaEngine'
+import { FALLBACK_FORMAT_GROUPS, flattenFormats, preferredFormatId } from './formatCatalog'
 
 const qualityOptions = [
   { value: 'high', label: 'High' },
@@ -30,6 +31,7 @@ export default function App() {
   const [mode, setMode] = useState('compress')
   const [quality, setQuality] = useState('medium')
   const [customTarget, setCustomTarget] = useState('10')
+  const [formatGroups, setFormatGroups] = useState(FALLBACK_FORMAT_GROUPS)
   const [outputFormat, setOutputFormat] = useState('mp4')
   const [scaleMode, setScaleMode] = useState('original')
   const [scaleValue, setScaleValue] = useState('50')
@@ -47,7 +49,8 @@ export default function App() {
   }, [result])
 
   const isBusy = phase === 'analyzing' || phase === 'processing'
-  const outputs = inspection?.kind && OUTPUTS[inspection.kind] ? OUTPUTS[inspection.kind] : OUTPUTS.video
+  const outputOptions = flattenFormats(formatGroups)
+  const outputSpec = outputOptions.find((option) => option.id === outputFormat) || outputOptions[0] || null
   const scaleDisabled = mode === 'convert' || inspection?.kind === 'audio'
   const scaleValueDisabled = scaleDisabled || scaleMode === 'original'
   const optionLabel = mode === 'compress' ? 'Quality' : mode === 'convert' ? 'Format' : 'Output'
@@ -106,18 +109,16 @@ export default function App() {
       const info = await engine.inspect(nextFile, (message) => setStatus(`${message}\n${nextFile.name}`))
       if (info.kind === 'unknown') throw new Error('This file could not be recognized as video, audio, or image.')
 
+      const groups = await engine.listOutputFormats((message) => setStatus(`${message}\n${nextFile.name}`))
+      setFormatGroups(groups)
       setInspection(info)
-      if (info.kind === 'image') {
-        changeMode('convert')
-        setOutputFormat('webp')
-      } else if (info.kind === 'audio') {
+
+      if (info.kind === 'audio') {
         if (mode === 'resize') changeMode('compress')
-        setOutputFormat('mp3')
         setScaleMode('original')
-      } else {
-        setOutputFormat('mp4')
       }
-      setStatus(`Selected:\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}`)
+      setOutputFormat(preferredFormatId(info.kind, groups))
+      setStatus(`Selected:\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}\n${flattenFormats(groups).length} output formats available`)
       setPhase('ready')
     } catch (err) {
       setError(err.message || 'Could not read the selected file.')
@@ -156,10 +157,6 @@ export default function App() {
   async function run() {
     if (!file || !inspection || isBusy) return
     if (!validateScale()) return
-    if (mode === 'compress' && inspection.kind === 'image') {
-      setError('Compress mode is for video and audio. Use Convert for images.')
-      return
-    }
     if (mode === 'resize' && inspection.kind === 'audio') {
       setError('Resize is not available for audio files.')
       return
@@ -189,7 +186,7 @@ export default function App() {
           ? await engine.compress({ file, inspection, targetMB, scale, onStatus: setStatus })
           : await engine.compressQuality({ file, inspection, quality, scale, onStatus: setStatus })
       } else if (mode === 'convert') {
-        data = await engine.convert({ file, inspection, outputFormat, onStatus: setStatus })
+        data = await engine.convert({ file, inspection, outputSpec, onStatus: setStatus })
       } else {
         data = await engine.resize({ file, inspection, scale, onStatus: setStatus })
       }
@@ -200,7 +197,8 @@ export default function App() {
       const targetNote = data.targetMB
         ? `\nTarget: ${formatCompactNumber(data.targetMB)} MB${data.withinTarget === false ? ' (slightly exceeded)' : ''}`
         : ''
-      setStatus(`Done:\n${data.filename}\n\n${formatBytes(file.size)} → ${formatBytes(data.size)}${targetNote}`)
+      const bundleNote = data.bundledFiles ? `\nBundled files: ${data.bundledFiles}` : ''
+      setStatus(`Done:\n${data.filename}\n\n${formatBytes(file.size)} → ${formatBytes(data.size)}${targetNote}${bundleNote}`)
       setPhase('done')
     } catch (err) {
       setError(err.message || 'FFmpeg processing failed.')
@@ -264,7 +262,7 @@ export default function App() {
               ref={fileInputRef}
               type="file"
               hidden
-              accept="video/*,audio/*,image/*,.mkv,.mov,.avi,.webm,.flac,.m4a,.aac,.ogg"
+              accept="video/*,audio/*,image/*,.mkv,.mov,.avi,.webm,.flac,.m4a,.aac,.ogg,.opus,.aiff,.avif,.heic,.tif,.tiff"
               onChange={(event) => selectFile(event.target.files?.[0])}
             />
             <div className="path-box" title={file?.name || ''}>{file?.name || ''}</div>
@@ -274,7 +272,7 @@ export default function App() {
             <label className="field-group">
               <span className="field-label">Mode</span>
               <select value={mode} onChange={(event) => changeMode(event.target.value)} disabled={isBusy}>
-                <option value="compress" disabled={inspection?.kind === 'image'}>Compress</option>
+                <option value="compress">Compress</option>
                 <option value="convert">Convert</option>
                 <option value="resize" disabled={inspection?.kind === 'audio'}>Resize</option>
               </select>
@@ -296,8 +294,14 @@ export default function App() {
                 </div>
               )}
               {mode === 'convert' && (
-                <select value={outputFormat} onChange={(event) => setOutputFormat(event.target.value)} disabled={isBusy}>
-                  {outputs.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <select value={outputSpec?.id || ''} onChange={(event) => setOutputFormat(event.target.value)} disabled={isBusy || !outputOptions.length}>
+                  {formatGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               )}
               {mode === 'resize' && (
