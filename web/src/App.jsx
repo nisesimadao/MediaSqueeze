@@ -3,6 +3,7 @@ import { MediaEngine } from './mediaEngine'
 import { FALLBACK_FORMAT_GROUPS, flattenFormats, preferredFormatId } from './formatCatalog'
 import { defaultCustomExtension, normalizeCustomExtension, runCustomFfmpeg } from './customArguments'
 import { localizeCategory, t } from './i18n'
+import { localizeCompatibility, localizeRuntimeMessage } from './runtimeLocalization'
 
 const qualityOptions = [
   { value: 'high', labelKey: 'quality.high' },
@@ -56,6 +57,7 @@ export default function App() {
   const outputOptions = flattenFormats(formatGroups)
   const outputSpec = outputOptions.find((option) => option.id === outputFormat) || outputOptions[0] || null
   const formatCompatibility = outputSpec?.compatibility || null
+  const localizedCompatibility = localizeCompatibility(formatCompatibility)
   const convertBlocked = mode === 'convert' && formatCompatibility?.canRun === false
   const scaleDisabled = mode === 'convert' || mode === 'custom' || inspection?.kind === 'audio'
   const scaleValueDisabled = scaleDisabled || scaleMode === 'original'
@@ -66,6 +68,10 @@ export default function App() {
       : mode === 'custom'
         ? t('label.extension')
         : t('label.output')
+
+  function reportStatus(message) {
+    setStatus(localizeRuntimeMessage(message))
+  }
 
   function scaleHint() {
     if (mode === 'convert') return t('hint.convertNoSize')
@@ -122,10 +128,10 @@ export default function App() {
     setStatus(`${t('status.selected')}\n${nextFile.name}\n\n${t('status.preparing')}`)
 
     try {
-      const info = await engine.inspect(nextFile, (message) => setStatus(`${message}\n${nextFile.name}`))
+      const info = await engine.inspect(nextFile, (message) => setStatus(`${localizeRuntimeMessage(message)}\n${nextFile.name}`))
       if (info.kind === 'unknown') throw new Error(t('error.unrecognizedMedia'))
 
-      const groups = await engine.listOutputFormats((message) => setStatus(`${message}\n${nextFile.name}`))
+      const groups = await engine.listOutputFormats((message) => setStatus(`${localizeRuntimeMessage(message)}\n${nextFile.name}`))
       setFormatGroups(groups)
       setInspection(info)
       setCustomExtension(defaultCustomExtension(info.kind))
@@ -138,7 +144,7 @@ export default function App() {
       setStatus(`${t('status.selected')}\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}\n${t('status.formatCount', { count: flattenFormats(groups).length })}`)
       setPhase('ready')
     } catch (err) {
-      const message = err.message || t('error.readSelected')
+      const message = localizeRuntimeMessage(err.message || t('error.readSelected'))
       setError(message)
       setStatus(t('error.prefix', { message }))
       setPhase('error')
@@ -179,8 +185,8 @@ export default function App() {
       setError(t('error.resizeAudio'))
       return
     }
-    if (mode === 'convert' && formatCompatibility?.canRun === false) {
-      const message = `${formatCompatibility.label}: ${formatCompatibility.message}`
+    if (mode === 'convert' && localizedCompatibility?.canRun === false) {
+      const message = `${localizedCompatibility.label}: ${localizedCompatibility.message}`
       setError(message)
       setStatus(t('error.prefix', { message }))
       return
@@ -195,8 +201,9 @@ export default function App() {
       try {
         normalizeCustomExtension(customExtension)
       } catch (err) {
-        setError(err.message)
-        setStatus(t('error.prefix', { message: err.message }))
+        const message = localizeRuntimeMessage(err.message)
+        setError(message)
+        setStatus(t('error.prefix', { message }))
         return
       }
     }
@@ -216,10 +223,10 @@ export default function App() {
       let data
       if (mode === 'compress') {
         data = targetMB !== null
-          ? await engine.compress({ file, inspection, targetMB, scale, onStatus: setStatus })
-          : await engine.compressQuality({ file, inspection, quality, scale, onStatus: setStatus })
+          ? await engine.compress({ file, inspection, targetMB, scale, onStatus: reportStatus })
+          : await engine.compressQuality({ file, inspection, quality, scale, onStatus: reportStatus })
       } else if (mode === 'convert') {
-        data = await engine.convert({ file, inspection, outputSpec, onStatus: setStatus })
+        data = await engine.convert({ file, inspection, outputSpec, onStatus: reportStatus })
       } else if (mode === 'custom') {
         data = await runCustomFfmpeg({
           engine,
@@ -227,10 +234,10 @@ export default function App() {
           inspection,
           argsText: customArgs,
           outputExtension: customExtension,
-          onStatus: setStatus,
+          onStatus: reportStatus,
         })
       } else {
-        data = await engine.resize({ file, inspection, scale, onStatus: setStatus })
+        data = await engine.resize({ file, inspection, scale, onStatus: reportStatus })
       }
 
       const url = URL.createObjectURL(data.blob)
@@ -243,7 +250,7 @@ export default function App() {
       setStatus(`${t('status.done')}\n${data.filename}\n\n${formatBytes(file.size)} → ${formatBytes(data.size)}${targetNote}${bundleNote}`)
       setPhase('done')
     } catch (err) {
-      const message = err.message || t('error.processing')
+      const message = localizeRuntimeMessage(err.message || t('error.processing'))
       setError(message)
       setStatus(t('error.prefix', { message }))
       setPhase('error')
@@ -264,13 +271,13 @@ export default function App() {
     }
 
     try {
-      const info = await engine.inspect(file, setStatus)
+      const info = await engine.inspect(file, reportStatus)
       setInspection(info)
       setCustomExtension(defaultCustomExtension(info.kind))
       setStatus(`${t('status.selected')}\n${file.name}\n\n${describeMedia(info, file.size)}`)
       setPhase('ready')
     } catch (err) {
-      const message = err.message || t('error.reload')
+      const message = localizeRuntimeMessage(err.message || t('error.reload'))
       setError(message)
       setStatus(t('error.prefix', { message }))
       setPhase('error')
@@ -352,12 +359,12 @@ export default function App() {
                       </optgroup>
                     ))}
                   </select>
-                  {formatCompatibility && (
+                  {localizedCompatibility && (
                     <span
                       className="field-hint"
-                      title={`${formatCompatibility.label}: ${formatCompatibility.message}`}
+                      title={`${localizedCompatibility.label}: ${localizedCompatibility.message}`}
                     >
-                      {formatCompatibility.icon} {formatCompatibility.label} — {formatCompatibility.message}
+                      {localizedCompatibility.icon} {localizedCompatibility.label} — {localizedCompatibility.message}
                     </span>
                   )}
                 </>
