@@ -17,6 +17,11 @@ assert.deepEqual(
 )
 
 assert.deepEqual(
+  parseCustomArguments(String.raw`-vf lut3d=C:\LUTs\look.cube -metadata comment=path\\with\\slashes`),
+  ['-vf', String.raw`lut3d=C:\LUTs\look.cube`, '-metadata', String.raw`comment=path\with\slashes`],
+)
+
+assert.deepEqual(
   buildCustomArguments('-c:v libx264 -crf 23', 'input.mov', 'out/output.mp4'),
   ['-i', 'input.mov', '-c:v', 'libx264', '-crf', '23', 'out/output.mp4'],
 )
