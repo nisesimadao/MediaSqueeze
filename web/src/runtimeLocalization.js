@@ -1,4 +1,4 @@
-import { getLocale, t } from './i18n'
+import { getLocale, t } from './i18n.js'
 
 const exactJapanese = new Map([
   ['Preparing FFmpeg...', () => t('status.preparing')],
