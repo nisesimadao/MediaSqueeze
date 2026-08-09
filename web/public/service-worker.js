@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'mediasqueeze-offline-'
-const CACHE_NAME = `${CACHE_PREFIX}v2`
+const CACHE_NAME = `${CACHE_PREFIX}v3`
 
 const FFMPEG_CORE_URLS = [
   'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js',
@@ -23,6 +23,11 @@ async function fetchAndCache(cache, url) {
   return response
 }
 
+function discoverLocalAssets(text) {
+  return [...text.matchAll(/\/assets\/[A-Za-z0-9._-]+\.(?:js|css|wasm)/g)]
+    .map((match) => match[0])
+}
+
 async function precacheApplicationShell() {
   const cache = await caches.open(CACHE_NAME)
   const pageResponse = await fetchAndCache(cache, '/')
@@ -31,9 +36,24 @@ async function precacheApplicationShell() {
     .map((match) => match[1])
     .filter((url) => url.startsWith('/'))
 
-  const localUrls = [...new Set([...LOCAL_SEED_URLS, ...discovered])]
+  const queue = [...new Set([...LOCAL_SEED_URLS, ...discovered])]
     .filter((url) => url !== '/')
-  await Promise.all(localUrls.map((url) => fetchAndCache(cache, url)))
+  const seen = new Set(['/'])
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const url = queue[index]
+    if (seen.has(url)) continue
+    seen.add(url)
+
+    const response = await fetchAndCache(cache, url)
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('javascript') && !url.endsWith('.js')) continue
+
+    const script = await response.clone().text()
+    for (const asset of discoverLocalAssets(script)) {
+      if (!seen.has(asset) && !queue.includes(asset)) queue.push(asset)
+    }
+  }
 }
 
 async function warmFfmpegCore() {
