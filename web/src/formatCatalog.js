@@ -29,7 +29,7 @@ const STREAMING_MUXERS = new Set([
 ])
 
 const AUDIO_MUXERS = new Set([
-  'a64', 'ac3', 'adts', 'aiff', 'alaw', 'amr', 'apm', 'aptx', 'aptx_hd', 'au', 'caf',
+  'ac3', 'adts', 'aiff', 'alaw', 'amr', 'apm', 'aptx', 'aptx_hd', 'au', 'caf',
   'codec2', 'dfpwm', 'dts', 'eac3', 'f64be', 'f64le', 'f32be', 'f32le', 'flac', 'g722',
   'g723_1', 'g726', 'g726le', 'gsm', 'ircam', 'latm', 'm4a', 'mlp', 'mp2', 'mp3', 'mulaw',
   'oga', 'ogg', 'oma', 'opus', 's16be', 's16le', 's24be', 's24le', 's32be', 's32le',
