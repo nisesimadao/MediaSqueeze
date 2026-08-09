@@ -2,23 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import { MediaEngine } from './mediaEngine'
 import { FALLBACK_FORMAT_GROUPS, flattenFormats, preferredFormatId } from './formatCatalog'
 import { defaultCustomExtension, normalizeCustomExtension, runCustomFfmpeg } from './customArguments'
+import { localizeCategory, t } from './i18n'
 
 const qualityOptions = [
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: 'high', labelKey: 'quality.high' },
+  { value: 'medium', labelKey: 'quality.medium' },
+  { value: 'low', labelKey: 'quality.low' },
   { value: '10mb', label: '10MB' },
   { value: '25mb', label: '25MB' },
   { value: '50mb', label: '50MB' },
   { value: '100mb', label: '100MB' },
-  { value: 'custom', label: 'Custom MB…' },
+  { value: 'custom', labelKey: 'quality.customMb' },
 ]
 
 const scaleOptions = [
-  { value: 'original', label: 'Original' },
-  { value: 'percent', label: 'Percent' },
-  { value: 'width', label: 'Width' },
-  { value: 'height', label: 'Height' },
+  { value: 'original', labelKey: 'scale.original' },
+  { value: 'percent', labelKey: 'scale.percent' },
+  { value: 'width', labelKey: 'scale.width' },
+  { value: 'height', labelKey: 'scale.height' },
 ]
 
 export default function App() {
@@ -40,7 +41,7 @@ export default function App() {
   const [customExtension, setCustomExtension] = useState('mp4')
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(0)
-  const [status, setStatus] = useState('Select a file, or drop one here.')
+  const [status, setStatus] = useState(t('status.selectFile'))
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
   const [dragging, setDragging] = useState(false)
@@ -58,16 +59,22 @@ export default function App() {
   const convertBlocked = mode === 'convert' && formatCompatibility?.canRun === false
   const scaleDisabled = mode === 'convert' || mode === 'custom' || inspection?.kind === 'audio'
   const scaleValueDisabled = scaleDisabled || scaleMode === 'original'
-  const optionLabel = mode === 'compress' ? 'Quality' : mode === 'convert' ? 'Format' : mode === 'custom' ? 'Extension' : 'Output'
+  const optionLabel = mode === 'compress'
+    ? t('label.quality')
+    : mode === 'convert'
+      ? t('label.format')
+      : mode === 'custom'
+        ? t('label.extension')
+        : t('label.output')
 
   function scaleHint() {
-    if (mode === 'convert') return 'Not used for Convert.'
-    if (mode === 'custom') return 'Controlled by custom FFmpeg arguments.'
-    if (inspection?.kind === 'audio') return 'Not available for audio.'
-    if (scaleMode === 'percent') return 'Example: 50 means half size.'
-    if (scaleMode === 'width') return 'Height is calculated automatically.'
-    if (scaleMode === 'height') return 'Width is calculated automatically.'
-    return 'Keeps original size.'
+    if (mode === 'convert') return t('hint.convertNoSize')
+    if (mode === 'custom') return t('hint.customNoSize')
+    if (inspection?.kind === 'audio') return t('hint.audioNoSize')
+    if (scaleMode === 'percent') return t('hint.percent')
+    if (scaleMode === 'width') return t('hint.width')
+    if (scaleMode === 'height') return t('hint.height')
+    return t('hint.original')
   }
 
   function changeMode(nextMode) {
@@ -95,8 +102,8 @@ export default function App() {
       setFile(null)
       setInspection(null)
       setResult(null)
-      setError('ffmpeg.wasm cannot process input files of 2GB or larger.')
-      setStatus('Error: Input file is too large.\nThe browser version supports files smaller than 2GB.')
+      setError(t('error.inputTooLarge'))
+      setStatus(t('error.inputTooLargeStatus'))
       setPhase('error')
       return
     }
@@ -112,11 +119,11 @@ export default function App() {
     setFile(nextFile)
     setInspection(null)
     setPhase('analyzing')
-    setStatus(`Selected:\n${nextFile.name}\n\nPreparing FFmpeg...`)
+    setStatus(`${t('status.selected')}\n${nextFile.name}\n\n${t('status.preparing')}`)
 
     try {
       const info = await engine.inspect(nextFile, (message) => setStatus(`${message}\n${nextFile.name}`))
-      if (info.kind === 'unknown') throw new Error('This file could not be recognized as video, audio, or image.')
+      if (info.kind === 'unknown') throw new Error(t('error.unrecognizedMedia'))
 
       const groups = await engine.listOutputFormats((message) => setStatus(`${message}\n${nextFile.name}`))
       setFormatGroups(groups)
@@ -128,11 +135,12 @@ export default function App() {
         setScaleMode('original')
       }
       setOutputFormat(preferredFormatId(info.kind, groups))
-      setStatus(`Selected:\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}\n${flattenFormats(groups).length} output formats available`)
+      setStatus(`${t('status.selected')}\n${nextFile.name}\n\n${describeMedia(info, nextFile.size)}\n${t('status.formatCount', { count: flattenFormats(groups).length })}`)
       setPhase('ready')
     } catch (err) {
-      setError(err.message || 'Could not read the selected file.')
-      setStatus(`Error: ${err.message || 'Could not read the selected file.'}`)
+      const message = err.message || t('error.readSelected')
+      setError(message)
+      setStatus(t('error.prefix', { message }))
       setPhase('error')
     }
   }
@@ -148,11 +156,11 @@ export default function App() {
     if (mode === 'convert' || mode === 'custom' || inspection?.kind === 'audio' || scaleMode === 'original') return true
     const value = Number(scaleValue)
     if (!Number.isInteger(value) || value <= 0) {
-      setError('Enter a positive whole number for Size.')
+      setError(t('error.positiveSize'))
       return false
     }
     if (scaleMode === 'percent' && value > 400) {
-      setError('Percent must be 400 or lower.')
+      setError(t('error.percentMax'))
       return false
     }
     return true
@@ -168,19 +176,19 @@ export default function App() {
     if (!file || !inspection || isBusy) return
     if (!validateScale()) return
     if (mode === 'resize' && inspection.kind === 'audio') {
-      setError('Resize is not available for audio files.')
+      setError(t('error.resizeAudio'))
       return
     }
     if (mode === 'convert' && formatCompatibility?.canRun === false) {
       const message = `${formatCompatibility.label}: ${formatCompatibility.message}`
       setError(message)
-      setStatus(`Error: ${message}`)
+      setStatus(t('error.prefix', { message }))
       return
     }
 
     const targetMB = targetFromQuality()
     if (mode === 'compress' && targetMB !== null && (!Number.isFinite(targetMB) || targetMB <= 0)) {
-      setError('Enter a valid target size in MB.')
+      setError(t('error.targetSize'))
       return
     }
     if (mode === 'custom') {
@@ -188,7 +196,7 @@ export default function App() {
         normalizeCustomExtension(customExtension)
       } catch (err) {
         setError(err.message)
-        setStatus(`Error: ${err.message}`)
+        setStatus(t('error.prefix', { message: err.message }))
         return
       }
     }
@@ -202,7 +210,7 @@ export default function App() {
     setError('')
     setProgress(0)
     setPhase('processing')
-    setStatus('Preparing FFmpeg...')
+    setStatus(t('status.preparing'))
 
     try {
       let data
@@ -229,14 +237,15 @@ export default function App() {
       setResult({ ...data, url })
       setProgress(1)
       const targetNote = data.targetMB
-        ? `\nTarget: ${formatCompactNumber(data.targetMB)} MB${data.withinTarget === false ? ' (slightly exceeded)' : ''}`
+        ? `\n${t('status.target', { size: formatCompactNumber(data.targetMB) })}${data.withinTarget === false ? t('status.slightlyExceeded') : ''}`
         : ''
-      const bundleNote = data.bundledFiles ? `\nBundled files: ${data.bundledFiles}` : ''
-      setStatus(`Done:\n${data.filename}\n\n${formatBytes(file.size)} → ${formatBytes(data.size)}${targetNote}${bundleNote}`)
+      const bundleNote = data.bundledFiles ? `\n${t('status.bundledFiles', { count: data.bundledFiles })}` : ''
+      setStatus(`${t('status.done')}\n${data.filename}\n\n${formatBytes(file.size)} → ${formatBytes(data.size)}${targetNote}${bundleNote}`)
       setPhase('done')
     } catch (err) {
-      setError(err.message || 'FFmpeg processing failed.')
-      setStatus(`Error: ${err.message || 'FFmpeg processing failed.'}`)
+      const message = err.message || t('error.processing')
+      setError(message)
+      setStatus(t('error.prefix', { message }))
       setPhase('error')
     }
   }
@@ -245,12 +254,12 @@ export default function App() {
     engine.cancel()
     setProgress(0)
     setInspection(null)
-    setStatus('Canceled.\nReloading FFmpeg...')
+    setStatus(t('status.canceledReloading'))
     setPhase('analyzing')
 
     if (!file) {
       setPhase('idle')
-      setStatus('Select a file, or drop one here.')
+      setStatus(t('status.selectFile'))
       return
     }
 
@@ -258,11 +267,12 @@ export default function App() {
       const info = await engine.inspect(file, setStatus)
       setInspection(info)
       setCustomExtension(defaultCustomExtension(info.kind))
-      setStatus(`Selected:\n${file.name}\n\n${describeMedia(info, file.size)}`)
+      setStatus(`${t('status.selected')}\n${file.name}\n\n${describeMedia(info, file.size)}`)
       setPhase('ready')
     } catch (err) {
-      setError(err.message || 'Could not reload FFmpeg.')
-      setStatus(`Error: ${err.message || 'Could not reload FFmpeg.'}`)
+      const message = err.message || t('error.reload')
+      setError(message)
+      setStatus(t('error.prefix', { message }))
       setPhase('error')
     }
   }
@@ -291,7 +301,7 @@ export default function App() {
 
           <div className="file-picker-row">
             <button className="control-button select-button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
-              Select File…
+              {t('app.selectFile')}
             </button>
             <input
               ref={fileInputRef}
@@ -305,12 +315,12 @@ export default function App() {
 
           <div className="options-grid">
             <label className="field-group">
-              <span className="field-label">Mode</span>
+              <span className="field-label">{t('app.mode')}</span>
               <select value={mode} onChange={(event) => changeMode(event.target.value)} disabled={isBusy}>
-                <option value="compress">Compress</option>
-                <option value="convert">Convert</option>
-                <option value="resize" disabled={inspection?.kind === 'audio'}>Resize</option>
-                <option value="custom">Custom</option>
+                <option value="compress">{t('mode.compress')}</option>
+                <option value="convert">{t('mode.convert')}</option>
+                <option value="resize" disabled={inspection?.kind === 'audio'}>{t('mode.resize')}</option>
+                <option value="custom">{t('mode.custom')}</option>
               </select>
             </label>
 
@@ -319,7 +329,9 @@ export default function App() {
               {mode === 'compress' && (
                 <div className="option-inline">
                   <select value={quality} onChange={(event) => setQuality(event.target.value)} disabled={isBusy}>
-                    {qualityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {qualityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.labelKey ? t(option.labelKey) : option.label}</option>
+                    ))}
                   </select>
                   {quality === 'custom' && (
                     <div className="compact-value">
@@ -333,7 +345,7 @@ export default function App() {
                 <>
                   <select value={outputSpec?.id || ''} onChange={(event) => setOutputFormat(event.target.value)} disabled={isBusy || !outputOptions.length}>
                     {formatGroups.map((group) => (
-                      <optgroup key={group.label} label={group.label}>
+                      <optgroup key={group.label} label={localizeCategory(group.label)}>
                         {group.options.map((option) => (
                           <option key={option.id} value={option.id} disabled={option.compatibility?.canRun === false}>{option.label}</option>
                         ))}
@@ -351,7 +363,7 @@ export default function App() {
                 </>
               )}
               {mode === 'resize' && (
-                <div className="fixed-output">{inspection?.kind === 'image' ? 'Same image type' : 'MP4 output'}</div>
+                <div className="fixed-output">{inspection?.kind === 'image' ? t('output.sameImageType') : t('output.mp4')}</div>
               )}
               {mode === 'custom' && (
                 <div className="custom-extension">
@@ -361,17 +373,17 @@ export default function App() {
                     onChange={(event) => setCustomExtension(event.target.value.replace(/^\.+/, ''))}
                     spellCheck="false"
                     disabled={isBusy}
-                    aria-label="Custom output extension"
+                    aria-label={t('aria.customExtension')}
                   />
                 </div>
               )}
             </label>
 
             <div className={`field-group ${scaleDisabled ? 'disabled-field' : ''}`}>
-              <span className="field-label">Size</span>
+              <span className="field-label">{t('label.size')}</span>
               <div className="size-controls">
                 <select value={scaleMode} onChange={(event) => changeScaleMode(event.target.value)} disabled={isBusy || scaleDisabled}>
-                  {scaleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  {scaleOptions.map((option) => <option key={option.value} value={option.value}>{t(option.labelKey)}</option>)}
                 </select>
                 <input
                   className="size-value"
@@ -379,7 +391,7 @@ export default function App() {
                   onChange={(event) => setScaleValue(event.target.value)}
                   inputMode="numeric"
                   disabled={isBusy || scaleValueDisabled}
-                  aria-label="Size value"
+                  aria-label={t('aria.sizeValue')}
                 />
               </div>
               <span className="field-hint">{scaleHint()}</span>
@@ -388,29 +400,29 @@ export default function App() {
 
           {mode === 'custom' && (
             <label className="custom-arguments-panel">
-              <span className="field-label">FFmpeg arguments</span>
+              <span className="field-label">{t('custom.arguments')}</span>
               <textarea
                 value={customArgs}
                 onChange={(event) => setCustomArgs(event.target.value)}
                 disabled={isBusy}
                 spellCheck="false"
-                placeholder={'-c:v libx264 -crf 23 -preset medium -c:a aac -b:a 160k\n\nInput/output are added automatically. Use {input} and {output} when their exact position matters.'}
+                placeholder={t('custom.placeholder')}
               />
-              <span className="field-hint custom-hint">Quotes and escaped spaces are supported. You can paste arguments with or without a leading “ffmpeg”.</span>
+              <span className="field-hint custom-hint">{t('custom.hint')}</span>
             </label>
           )}
 
           <div className="action-row">
-            <button className="control-button action-button" onClick={run} disabled={!inspection || isBusy || convertBlocked}>Start</button>
-            <button className="control-button action-button" onClick={cancel} disabled={phase !== 'processing'}>Cancel</button>
+            <button className="control-button action-button" onClick={run} disabled={!inspection || isBusy || convertBlocked}>{t('button.start')}</button>
+            <button className="control-button action-button" onClick={cancel} disabled={phase !== 'processing'}>{t('button.cancel')}</button>
             {result ? (
-              <a className="control-button action-button download-action" href={result.url} download={result.filename}>Download Output</a>
+              <a className="control-button action-button download-action" href={result.url} download={result.filename}>{t('button.download')}</a>
             ) : (
-              <button className="control-button action-button" disabled>Download Output</button>
+              <button className="control-button action-button" disabled>{t('button.download')}</button>
             )}
           </div>
 
-          <div className="progress-bar" aria-label="Progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress * 100)}>
+          <div className="progress-bar" aria-label={t('aria.progress')} role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress * 100)}>
             <div className="progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
 
@@ -418,8 +430,8 @@ export default function App() {
         </div>
       </main>
 
-      <div className="web-note">Web版 — ffmpeg.wasmでブラウザ内処理。ファイルはサーバーへ送信されません。</div>
-      {dragging && <div className="drop-overlay">Drop a media file here</div>}
+      <div className="web-note">{t('web.note')}</div>
+      {dragging && <div className="drop-overlay">{t('drop.here')}</div>}
     </div>
   )
 }
