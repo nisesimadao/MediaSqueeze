@@ -1,7 +1,6 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 
 namespace MediaSqueeze;
 
@@ -79,12 +78,12 @@ public partial class MainWindow
         }
     }
 
-    private async void CustomMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void CustomMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!IsCustomMode())
         {
-            customArgumentsPanel.Visibility = Visibility.Collapsed;
-            customExtensionBox.Visibility = Visibility.Collapsed;
+            if (customArgumentsPanel is not null) customArgumentsPanel.Visibility = Visibility.Collapsed;
+            if (customExtensionBox is not null) customExtensionBox.Visibility = Visibility.Collapsed;
             if (Math.Abs(Height - 560) < 1) Height = 430;
             CmbMode_SelectionChanged(sender, e);
             return;
@@ -98,7 +97,6 @@ public partial class MainWindow
         }
 
         ApplyCustomModeUi();
-        await Task.CompletedTask;
     }
 
     private void ApplyCustomModeUi()
@@ -142,6 +140,6 @@ public partial class MainWindow
 
     private bool IsCustomMode()
     {
-        return SelectedTag(cmbMode, "compress").Equals("custom", StringComparison.OrdinalIgnoreCase);
+        return cmbMode is not null && SelectedTag(cmbMode, "compress").Equals("custom", StringComparison.OrdinalIgnoreCase);
     }
 }
