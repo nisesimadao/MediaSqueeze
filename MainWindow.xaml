@@ -26,6 +26,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -57,10 +58,11 @@
 
             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                 <Label Content="Mode" Target="{Binding ElementName=cmbMode}" FontWeight="Bold" Padding="0,0,0,2"/>
-                <ComboBox x:Name="cmbMode" SelectionChanged="CmbMode_SelectionChanged">
+                <ComboBox x:Name="cmbMode" SelectionChanged="CustomMode_SelectionChanged">
                     <ComboBoxItem Content="Compress" Tag="compress" IsSelected="True"/>
                     <ComboBoxItem Content="Convert" Tag="convert"/>
                     <ComboBoxItem Content="Resize" Tag="resize"/>
+                    <ComboBoxItem Content="Custom" Tag="custom"/>
                 </ComboBox>
             </StackPanel>
 
@@ -76,6 +78,16 @@
                 <ComboBox x:Name="cmbOutputFormat" Visibility="Collapsed" MaxDropDownHeight="330"/>
                 <TextBlock x:Name="txtFixedOutput" Visibility="Collapsed"
                            Text="MP4 output" Margin="0,6,0,0" Foreground="Gray"/>
+                <Grid x:Name="customExtensionBox" Visibility="Collapsed" Height="24" Margin="0,3,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="." VerticalAlignment="Center" Margin="4,0,2,0" Foreground="Gray"/>
+                    <TextBox x:Name="txtCustomExtension" Grid.Column="1" Text="mp4"
+                             VerticalContentAlignment="Center" FontFamily="Consolas"
+                             ToolTip="Output extension, for example mp4, mkv, m4a, webp"/>
+                </Grid>
             </StackPanel>
 
             <StackPanel Grid.Column="2" Margin="8,0,0,0">
@@ -101,17 +113,34 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,10">
-            <Button x:Name="btnRun" Content="Start" Width="116" Click="BtnRun_Click"/>
+        <Grid x:Name="customArgumentsPanel" Grid.Row="3" Margin="0,0,0,10" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="86"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Label Grid.Row="0" Content="FFmpeg arguments" Target="{Binding ElementName=txtCustomArguments}"
+                   FontWeight="Bold" Padding="0,0,0,3"/>
+            <TextBox x:Name="txtCustomArguments" Grid.Row="1"
+                     AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas" FontSize="12"
+                     ToolTip="Input/output are automatic. Use {input} and {output} when their exact position matters."/>
+            <TextBlock Grid.Row="2" Margin="0,4,0,0" Foreground="Gray" FontSize="11" TextWrapping="Wrap"
+                       Text="Input/output are added automatically. Quotes and escaped spaces are supported. Use {input} and {output} to control their exact position; a leading ffmpeg is optional."/>
+        </Grid>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="btnRun" Content="Start" Width="116" Click="CustomAwareBtnRun_Click"/>
             <Button x:Name="btnCancel" Content="Cancel" Width="116" Margin="10,2,2,2"
                     Click="BtnCancel_Click" IsEnabled="False"/>
             <Button x:Name="btnOpenFolder" Content="Show Output" Width="116" Margin="10,2,2,2"
                     Click="BtnOpenFolder_Click" IsEnabled="False"/>
         </StackPanel>
 
-        <ProgressBar x:Name="progressBar" Grid.Row="4" Height="20" Minimum="0" Maximum="100"/>
+        <ProgressBar x:Name="progressBar" Grid.Row="5" Height="20" Minimum="0" Maximum="100"/>
 
-        <TextBox x:Name="txtStatus" Grid.Row="5" Margin="0,10,0,0"
+        <TextBox x:Name="txtStatus" Grid.Row="6" Margin="0,10,0,0"
                  IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                  Text="Select a file, or drop one here."/>
     </Grid>

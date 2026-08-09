@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { installSmartMediaEngine } from './smartMediaEngine'
 import './styles.css'
+import './customMode.css'
 
 installSmartMediaEngine()
 
