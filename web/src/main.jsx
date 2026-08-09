@@ -2,9 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { installSmartMediaEngine } from './smartMediaEngine'
+import { getLocale, setLocale } from './i18n'
 import './styles.css'
 import './customMode.css'
 
+setLocale(getLocale())
 installSmartMediaEngine()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
