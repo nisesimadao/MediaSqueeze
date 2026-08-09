@@ -7,6 +7,7 @@ on:
       - support-all-media-formats
       - smart-format-compatibility
       - custom-ffmpeg-arguments
+      - fix-localization
   pull_request:
 
 permissions:
@@ -69,6 +70,8 @@ jobs:
           NODE
       - name: Test custom argument parser
         run: node src/customArguments.test.mjs
+      - name: Test localization
+        run: node src/i18n.test.mjs
       - name: Test smart compatibility
         run: node src/formatCompatibility.test.mjs
       - name: Validate real muxer defaults

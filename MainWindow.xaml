@@ -57,12 +57,12 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                <Label Content="Mode" Target="{Binding ElementName=cmbMode}" FontWeight="Bold" Padding="0,0,0,2"/>
+                <Label x:Name="lblMode" Content="Mode" Target="{Binding ElementName=cmbMode}" FontWeight="Bold" Padding="0,0,0,2"/>
                 <ComboBox x:Name="cmbMode" SelectionChanged="CustomMode_SelectionChanged">
-                    <ComboBoxItem Content="Compress" Tag="compress" IsSelected="True"/>
-                    <ComboBoxItem Content="Convert" Tag="convert"/>
-                    <ComboBoxItem Content="Resize" Tag="resize"/>
-                    <ComboBoxItem Content="Custom" Tag="custom"/>
+                    <ComboBoxItem x:Name="modeCompressItem" Content="Compress" Tag="compress" IsSelected="True"/>
+                    <ComboBoxItem x:Name="modeConvertItem" Content="Convert" Tag="convert"/>
+                    <ComboBoxItem x:Name="modeResizeItem" Content="Resize" Tag="resize"/>
+                    <ComboBoxItem x:Name="modeCustomItem" Content="Custom" Tag="custom"/>
                 </ComboBox>
             </StackPanel>
 
@@ -70,9 +70,9 @@
                 <Label x:Name="txtOptionLabel" Content="Quality" Target="{Binding ElementName=cmbQuality}"
                        FontWeight="Bold" Padding="0,0,0,2"/>
                 <ComboBox x:Name="cmbQuality">
-                    <ComboBoxItem Content="High" Tag="high"/>
-                    <ComboBoxItem Content="Medium" Tag="medium" IsSelected="True"/>
-                    <ComboBoxItem Content="Low" Tag="low"/>
+                    <ComboBoxItem x:Name="qualityHighItem" Content="High" Tag="high"/>
+                    <ComboBoxItem x:Name="qualityMediumItem" Content="Medium" Tag="medium" IsSelected="True"/>
+                    <ComboBoxItem x:Name="qualityLowItem" Content="Low" Tag="low"/>
                     <ComboBoxItem Content="10MB" Tag="10mb"/>
                 </ComboBox>
                 <ComboBox x:Name="cmbOutputFormat" Visibility="Collapsed" MaxDropDownHeight="330"/>
@@ -99,10 +99,10 @@
                         <ColumnDefinition Width="76"/>
                     </Grid.ColumnDefinitions>
                     <ComboBox x:Name="cmbScaleMode" Grid.Column="0" SelectionChanged="CmbScaleMode_SelectionChanged">
-                        <ComboBoxItem Content="Original" Tag="original" IsSelected="True"/>
-                        <ComboBoxItem Content="Percent" Tag="percent"/>
-                        <ComboBoxItem Content="Width" Tag="width"/>
-                        <ComboBoxItem Content="Height" Tag="height"/>
+                        <ComboBoxItem x:Name="scaleOriginalItem" Content="Original" Tag="original" IsSelected="True"/>
+                        <ComboBoxItem x:Name="scalePercentItem" Content="Percent" Tag="percent"/>
+                        <ComboBoxItem x:Name="scaleWidthItem" Content="Width" Tag="width"/>
+                        <ComboBoxItem x:Name="scaleHeightItem" Content="Height" Tag="height"/>
                     </ComboBox>
                     <TextBox x:Name="txtScaleValue" Grid.Column="1" Margin="8,0,0,0"
                              Text="50" VerticalContentAlignment="Center"
@@ -119,14 +119,14 @@
                 <RowDefinition Height="86"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Label Grid.Row="0" Content="FFmpeg arguments" Target="{Binding ElementName=txtCustomArguments}"
+            <Label x:Name="lblCustomArguments" Grid.Row="0" Content="FFmpeg arguments" Target="{Binding ElementName=txtCustomArguments}"
                    FontWeight="Bold" Padding="0,0,0,3"/>
             <TextBox x:Name="txtCustomArguments" Grid.Row="1"
                      AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                      FontFamily="Consolas" FontSize="12"
                      ToolTip="Input/output are automatic. Use {input} and {output} when their exact position matters."/>
-            <TextBlock Grid.Row="2" Margin="0,4,0,0" Foreground="Gray" FontSize="11" TextWrapping="Wrap"
+            <TextBlock x:Name="txtCustomArgumentsHint" Grid.Row="2" Margin="0,4,0,0" Foreground="Gray" FontSize="11" TextWrapping="Wrap"
                        Text="Input/output are added automatically. Quotes and escaped spaces are supported. Use {input} and {output} to control their exact position; a leading ffmpeg is optional."/>
         </Grid>
 
