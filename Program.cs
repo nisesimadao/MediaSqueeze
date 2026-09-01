@@ -262,6 +262,7 @@ public static class MediaProcessor
                 "high" => 192,
                 "low" => 96,
                 "10mb" => TargetAudioBitrate(duration, 10),
+                "15mb" => TargetAudioBitrate(duration, 15),
                 "20mb" => TargetAudioBitrate(duration, 20),
                 _ => 128
             };
@@ -508,6 +509,7 @@ public static class MediaProcessor
         targetMB = quality switch
         {
             "10mb" => 10,
+            "15mb" => 15,
             "20mb" => 20,
             _ => 0
         };
