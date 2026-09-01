@@ -74,6 +74,7 @@
                     <ComboBoxItem x:Name="qualityMediumItem" Content="Medium" Tag="medium" IsSelected="True"/>
                     <ComboBoxItem x:Name="qualityLowItem" Content="Low" Tag="low"/>
                     <ComboBoxItem Content="10MB" Tag="10mb"/>
+                    <ComboBoxItem Content="20MB" Tag="20mb"/>
                 </ComboBox>
                 <ComboBox x:Name="cmbOutputFormat" Visibility="Collapsed" MaxDropDownHeight="330"/>
                 <TextBlock x:Name="txtFixedOutput" Visibility="Collapsed"

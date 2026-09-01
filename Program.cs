@@ -151,9 +151,10 @@ public static class MediaProcessor
 
         string outputPath = CreateOutputPath(request, kind);
 
-        if (request.Mode == SqueezeMode.Compress && kind == MediaKind.Image && request.Quality == "10mb")
+        if (request.Mode == SqueezeMode.Compress && kind == MediaKind.Image &&
+            TryGetTargetMegabytes(request.Quality, out double imageTargetMB))
         {
-            return await ProcessImageTargetAsync(request, outputPath, 10 * 1024 * 1024L, progress, cancellationToken);
+            return await ProcessImageTargetAsync(request, outputPath, MegabytesToBytes(imageTargetMB), progress, cancellationToken);
         }
 
         string parameter = BuildParameter(request, kind, mediaInfo.Duration, hasVideo, hasAudio);
@@ -261,14 +262,15 @@ public static class MediaProcessor
                 "high" => 192,
                 "low" => 96,
                 "10mb" => TargetAudioBitrate(duration, 10),
+                "20mb" => TargetAudioBitrate(duration, 20),
                 _ => 128
             };
             return $"-vn -c:a aac -b:a {bitrate}k";
         }
 
-        if (request.Quality == "10mb")
+        if (TryGetTargetMegabytes(request.Quality, out double targetMB))
         {
-            (int videoKbps, int audioKbps) = TargetVideoBitrates(duration, 10, hasAudio);
+            (int videoKbps, int audioKbps) = TargetVideoBitrates(duration, targetMB, hasAudio);
             string audio = hasAudio && audioKbps > 0 ? $"-b:a {audioKbps}k" : "-an";
             return JoinParameters($"-b:v {videoKbps}k", audio, scaleFilter);
         }
@@ -499,6 +501,22 @@ public static class MediaProcessor
         int audioKbps = hasAudio ? (totalKbps < 180 ? 24 : Math.Clamp((int)Math.Round(totalKbps * 0.12), 32, 160)) : 0;
         int videoKbps = Math.Max(12, totalKbps - audioKbps - 6);
         return (videoKbps, audioKbps);
+    }
+
+    private static bool TryGetTargetMegabytes(string quality, out double targetMB)
+    {
+        targetMB = quality switch
+        {
+            "10mb" => 10,
+            "20mb" => 20,
+            _ => 0
+        };
+        return targetMB > 0;
+    }
+
+    private static long MegabytesToBytes(double megabytes)
+    {
+        return (long)Math.Round(megabytes * 1024 * 1024);
     }
 
     private static string BuildScaleFilter(SqueezeRequest request, double extraScale = 1.0)
