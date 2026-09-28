@@ -1,24 +1,27 @@
 # MediaSqueeze
 
-FFmpegを使って、動画・音声・画像を圧縮・変換・リサイズするMediaSqueezeのデスクトップ/W​​eb実装です。
+MediaSqueeze は、FFmpeg を使って動画、音声、画像を圧縮、変換、リサイズするアプリです。
+Windows 向けデスクトップ版と Web 版があります。
 
-- **Windows版**: .NET 9 / WPF。ドラッグ&ドロップ、「プログラムから開く」、進捗・キャンセル・出力表示に対応。
-- **Web版**: React + Vite + ffmpeg.wasm。処理はブラウザ内で完結し、PWAのオフライン利用にも対応。
+- **Windows 版**：.NET 9 / WPF で実装しています。
+  ドラッグ＆ドロップ、「プログラムから開く」、進捗表示、キャンセル、出力表示に対応します。
+- **Web 版**：React + Vite + ffmpeg.wasm で実装しています。
+  処理はブラウザ内で完結し、PWA のオフライン利用にも対応します。
 
 ## 特徴
 
-- **動画・音声・画像をCompress**
-  - 動画: MP4
-  - 音声: AAC / M4A
-  - 静止画: WebP
-  - High / Medium / Low と容量ターゲットを利用可能
-- **FFmpegが実際に対応している出力形式を列挙**
-  - 起動中のFFmpegへ `-muxers` / `-encoders` / `-devices` を問い合わせるため、固定された小さな形式リストではありません。
-  - 一般によく使う形式を先頭に置き、その後をカテゴリ別に整理します。
-- **常識的な優先順**
-  - Video: MP4 → MOV → MKV → WebM → AVI → MPEG-TS …
-  - Audio: MP3 → M4A/AAC → WAV → FLAC → OGG/Opus …
-  - Images: JPEG → PNG → WebP → AVIF → GIF/APNG → TIFF/BMP …
+- **動画、音声、画像の圧縮**
+  - 動画：MP4
+  - 音声：AAC / M4A
+  - 静止画：WebP
+  - High / Medium / Low のプリセットと、目標容量を指定できます。
+- **実行中の FFmpeg が対応する出力形式を列挙**
+  - 起動中の FFmpeg に `-muxers` / `-encoders` / `-devices` を問い合わせるため、固定した形式一覧には依存しません。
+  - 一般的な形式を先に表示し、その後をカテゴリ別に整理します。
+- **一般的な形式を優先して表示**
+  - Video：MP4 → MOV → MKV → WebM → AVI → MPEG-TS …
+  - Audio：MP3 → M4A/AAC → WAV → FLAC → OGG/Opus …
+  - Images：JPEG → PNG → WebP → AVIF → GIF/APNG → TIFF/BMP …
 - **カテゴリ分け**
   - Video
   - Audio
@@ -27,11 +30,13 @@ FFmpegを使って、動画・音声・画像を圧縮・変換・リサイズ�
   - Raw / Elementary Streams
   - Subtitles & Data
   - Advanced / Other
-- **Resize**: Percent / Width / Height指定。音声では無効。
-- **ブラウザの複数ファイル出力**: HLS/DASHなど複数ファイルを生成する形式はZIPにまとめてダウンロード。
-- **実ランタイム追従**: FFmpegビルドに存在しないmuxer/encoderは通常の候補として出しません。
+- **Resize**：Percent / Width / Height を指定できます。
+  音声では無効です。
+- **ブラウザの複数ファイル出力**：HLS や DASH など、複数ファイルを生成する形式は ZIP にまとめてダウンロードします。
+- **実ランタイムへの追従**：使用中の FFmpeg ビルドに存在しない muxer や encoder は、通常の候補として表示しません。
 
-> AdvancedのmuxerはFFmpeg側の仕様上、入力ストリーム・codec・追加オプションの組み合わせによっては変換できないものがあります。MediaSqueezeはmuxerを列挙しますが、FFmpeg自身が成立しない組み合わせを拒否する場合があります。
+> Advanced に含まれる muxer は、入力ストリーム、codec、追加オプションの組み合わせによって変換できない場合があります。
+> MediaSqueeze は利用可能な muxer を列挙しますが、成立しない組み合わせは FFmpeg 自身が拒否します。
 
 ## プロジェクト構成
 
@@ -55,7 +60,7 @@ MediaSqueeze/
 └── README.md
 ```
 
-## Windows版
+## Windows 版
 
 ### 要件
 
@@ -63,7 +68,7 @@ MediaSqueeze/
 - .NET 9 Runtime
 - FFmpeg / ffprobe
 
-アプリフォルダにFFmpegが無い場合、Xabe.FFmpeg Downloaderを使ってセットアップします。
+アプリフォルダに FFmpeg がない場合は、Xabe.FFmpeg Downloader を使ってセットアップします。
 
 ### ビルド
 
@@ -79,7 +84,7 @@ dotnet build MediaSqueeze.sln
 dotnet publish MediaSqueeze.csproj -c Release
 ```
 
-## Web版
+## Web 版
 
 ```bash
 cd web
@@ -87,31 +92,36 @@ npm install
 npm run dev
 ```
 
-Production build:
+本番用ビルドは次のコマンドで作成します。
 
 ```bash
 npm run build
 ```
 
-Web版はffmpeg.wasmのsingle-thread coreを使用します。入力ファイルはサーバーへアップロードせず、ブラウザの仮想ファイルシステム内で処理します。
+Web 版は ffmpeg.wasm の single-thread core を使用します。
+入力ファイルはサーバーへアップロードせず、ブラウザの仮想ファイルシステム内で処理します。
 
 ## Compress
 
 ### 動画
 
-High / Medium / Lowではビットレートプリセットを使います。容量指定では動画長からビットレート予算を計算し、音声ストリームの有無も考慮します。
+High / Medium / Low ではビットレートプリセットを使用します。
+目標容量を指定した場合は、動画の長さと音声ストリームの有無からビットレート予算を計算します。
 
 ### 音声
 
-AAC / M4Aへ圧縮します。容量指定時は再生時間から音声ビットレートを計算します。
+AAC / M4A へ圧縮します。
+目標容量を指定した場合は、再生時間から音声ビットレートを計算します。
 
 ### 静止画
 
-WebPへ圧縮します。High / Medium / Lowでは品質値を変更します。容量指定では品質を段階的に下げ、それでも大きい場合は解像度も縮小してターゲット容量へ寄せます。
+WebP へ圧縮します。
+High / Medium / Low では品質値を変更します。
+目標容量を指定した場合は品質を段階的に下げ、それでも容量を超える場合は解像度も縮小します。
 
 ## Convert
 
-MediaSqueezeは、実行中FFmpegの以下の情報から候補を構築します。
+MediaSqueeze は、実行中の FFmpeg から次の情報を取得して出力候補を構築します。
 
 ```text
 ffmpeg -hide_banner -muxers
@@ -119,29 +129,33 @@ ffmpeg -hide_banner -encoders
 ffmpeg -hide_banner -devices
 ```
 
-そのため「FFmpeg一般が対応しているらしい形式」を決め打ちするのではなく、**その端末/ブラウザで実際に使っているFFmpegビルドが持つ出力muxer**が基準になります。
+そのため、一般的な FFmpeg の対応形式を固定リストとして持つのではなく、その環境で実際に使用している FFmpeg ビルドの出力 muxer を基準にします。
 
-MP4、MP3、JPEGなど一般的な形式には適切なencoder設定をMediaSqueeze側で用意し、それ以外の高度なmuxerはFFmpegの既定選択を利用します。
+MP4、MP3、JPEG などの一般的な形式には MediaSqueeze 側で encoder 設定を用意します。
+それ以外の高度な muxer では、FFmpeg の既定選択を利用します。
 
 ## Resize
 
-- **Original**: 元サイズ
-- **Percent**: 元サイズに対する倍率
-- **Width**: 幅指定、高さ自動
-- **Height**: 高さ指定、幅自動
+- **Original**：元のサイズを維持します。
+- **Percent**：元サイズに対する倍率を指定します。
+- **Width**：幅を指定し、高さは自動計算します。
+- **Height**：高さを指定し、幅は自動計算します。
 
-動画/画像で利用できます。音声では利用できません。
+動画と画像で利用できます。
+音声では利用できません。
 
 ## CI
 
-GitHub Actionsで両実装を検証します。
+GitHub Actions でデスクトップ版と Web 版を検証します。
 
-- Windows runner: `.NET 9 / WPF` Release build
-- Ubuntu runner: 実FFmpegのmuxer/encoder/device一覧を使った形式カタログ検証
-- Web: Vite production build
+- Windows runner：`.NET 9 / WPF` の Release ビルド。
+- Ubuntu runner：実際の FFmpeg の muxer / encoder / device 一覧を使った形式カタログの検証。
+- Web：Vite の production build。
 
-形式カタログ検証では、MP4・MOV・MKV・WebM・MP3・M4A・WAV・FLAC・JPEG・PNG・WebPなどの主要形式が存在し、一般的な優先順が保たれていることをチェックします。
+形式カタログの検証では、MP4、MOV、MKV、WebM、MP3、M4A、WAV、FLAC、JPEG、PNG、WebP などの主要形式が存在し、指定した優先順が保たれていることを確認します。
 
 ## 注意
 
-FFmpegの「muxerが存在する」ことと、「どんな入力でもその形式へ自動変換できる」ことは同義ではありません。特にストリーミング、raw stream、字幕/data、特殊コンテナはcodecや追加オプションに制約があります。MediaSqueezeではそれらもAdvanced用途として表示しますが、成立しない組み合わせではFFmpegのエラーを返します。
+FFmpeg で muxer が利用できることと、任意の入力をその形式へ自動変換できることは別です。
+ストリーミング、raw stream、字幕やデータ、特殊コンテナでは、codec や追加オプションに制約があります。
+MediaSqueeze はこれらを Advanced 用途として表示しますが、成立しない組み合わせでは FFmpeg のエラーをそのまま返します。
